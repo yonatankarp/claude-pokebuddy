@@ -76,7 +76,7 @@ Each species uses its Gen 1 growth rate: fast (4n³/5), medium fast (n³), mediu
 
 `signals.ts` detects commands by parsing the Bash command string. Runner names are a list: `gradle`, `gradlew`, `mvn`, `npm`, `pnpm`, `yarn`, `bun`, `pytest`, `cargo`, `go test`, `make`, `tsc`, `eslint`, `ruff`, `jest`, `vitest`. A command inside quotes (`echo "git push"`) does not count. Custom scripts are not detected; any Bash success counting would be trivially farmed.
 
-EXP is summed per turn in memory and written once in `turn.complete`. `session.end` only flushes.
+EXP is summed per turn in memory and written once in `turn.complete`. Several sessions can run at once and share the store, so every change reads the save fresh, applies itself and writes back; nothing waits for `session.end`.
 
 ## Evolution
 
