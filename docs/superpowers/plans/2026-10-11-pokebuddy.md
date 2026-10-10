@@ -21,7 +21,9 @@
 - Trade evolutions on a successful push or PR at level 36 or higher. Stone evolutions only through `/buddy use`.
 - Speech model default `haiku` (alias, a `userConfig` option `speechModel`), 4000 ms timeout, never blocks a turn. The spec's `claude-haiku-5-5` is replaced by the alias so the mod tracks the cheapest Haiku.
 - `$.store` key `save`, schema `version: 1`; total store under 4 MiB.
-- Commits use the repo-local identity `Yonatan Karp-Rudin <yonvata@gmail.com>`; never the work address.
+- Commits use the repo-local identity `Yonatan Karp-Rudin <yonvata@gmail.com>`; never the work address. Every commit message ends with a blank line and `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`; the `git commit -m` lines below omit it for brevity and must have it added.
+- Several Claude Code sessions may run at once and share one `$.store`. Every change to the save reads it fresh from the store, applies the change and writes it back (`mutate` in Task 11); the `$.state` copy is only what the band draws.
+- Minimum Claude Code version: 2.1.296 (early-access mod API).
 - Writing style for README and user-facing text: no em dashes.
 
 ## Review Focus
@@ -31,8 +33,10 @@
 - A terminal narrower than 60 columns, or a band with `maxRows` of 1, must still draw something sane (compact line, no bubble) and never throw.
 - Haiku failing, timing out or replying with junk must leave the turn untouched and fall back to a canned cry; the judge must ignore a reply with no number.
 - Subagent tool calls and subagent `turn.complete` events must not trigger speech or double-count turns.
+- Two sessions open at once: a change one session made to the store must survive the other session's next turn or command.
+- The checks Claude really runs: `./gradlew test 2>&1 | tail -20` (piped, outcome unknown, skipped), `pytest -q`, `tsc --noEmit`.
 
-Each line has a test in the task that owns the code (Tasks 5, 7, 10, 9 and 11 respectively).
+Each line has a test in the task that owns the code (Tasks 5, 7, 8, 9, 11, 11 and 5 respectively).
 
 ---
 
@@ -156,6 +160,8 @@ export {}
 
 - [ ] **Step 2: Write the spike module**
 
+The spike answers seven questions, each a wrong guess that would cost a rewrite: is `buddy` free as a command name; does the sandbox know the local time zone; does a local import load; does `crypto.getRandomValues` exist; how a failing Bash call looks at `tool.call` (`isError`, or an exit code in the result); does work started without `await` inside `turn.complete` finish after the hook returns; does `prompt.submit` fire for a slash command.
+
 `hooks/spike.ts`:
 ```ts
 export const SPIKE = 'local import works'
@@ -171,19 +177,36 @@ export const register: Register = on => {
     await $.command.register({ name: 'buddy', description: 'spike' })
     return next(e)
   })
+  on('prompt.submit', async ($, e, next) => {
+    const seen = ((await $.store.get('spike.prompts')) as string[] | undefined) ?? []
+    await $.store.set('spike.prompts', [...seen, `${JSON.stringify(e.origin)} ${e.text.slice(0, 20)}`])
+    return next(e)
+  })
+  on('tool.call', async ($, e, next) => {
+    const ran = await next(e)
+    if (e.tool === 'Bash') await $.store.set('spike.bash', JSON.stringify(ran).slice(0, 600))
+    return ran
+  })
+  on('turn.complete', async ($, e, next) => {
+    const r = await next(e)
+    void $.clock.sleep(2000).then(() => $.store.set('spike.late', 'timer work finished'))
+    void $.model.complete({ model: 'haiku', prompt: 'Say hi in two words.', maxTokens: 10 })
+      .then(m => $.store.set('spike.model', m.isAnswered ? `answered: ${m.text}` : `not answered: ${m.reason}`))
+    return r
+  })
   on('command.run', { command: 'buddy' }, async $ => {
     const tz = (() => {
       try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch (err) { return `no Intl: ${String(err)}` }
     })()
-    const hour = new Date().getHours()
-    const utcHour = new Date().getUTCHours()
     let proc = 'n/a'
     try {
-      const r = await $.process.run(['date', '+%H %Y-%m-%d'])
+      const r = await $.process.run(['date', '+%H %Y-%m-%d %z'])
       proc = r.stdout.trim()
     } catch (err) { proc = `process refused: ${String(err)}` }
-    const b64 = typeof btoa === 'function' ? 'btoa present' : 'no btoa'
-    return { text: `${SPIKE} | tz=${tz} | getHours=${hour} utc=${utcHour} | date=${proc} | ${b64}` }
+    let rand = 'no crypto.getRandomValues'
+    try { rand = `getRandomValues ok ${crypto.getRandomValues(new Uint32Array(1))[0]! >= 0}` } catch {}
+    const stored = await Promise.all(['spike.prompts', 'spike.bash', 'spike.late', 'spike.model'].map(async k => `${k}=${JSON.stringify(await $.store.get(k))}`))
+    return { text: [`${SPIKE}`, `tz=${tz} getHours=${new Date().getHours()} utc=${new Date().getUTCHours()} date=${proc}`, rand, ...stored].join('\n') }
   })
 }
 ```
@@ -204,17 +227,27 @@ Expected: no refusals; it lists `session.start`, `command.run` and the `buddy` c
 
 - [ ] **Step 5: Run the spike headless**
 
-Run: `cd /tmp && claude -p --plugin-dir ~/Projects/_private_projects/claude-pokebuddy "/buddy"`
-Expected: one line like `local import works | tz=Europe/Berlin | getHours=14 utc=12 | date=14 2026-10-11 | btoa present`.
+Run, from a scratch directory:
+```bash
+claude -p --plugin-dir ~/Projects/_private_projects/claude-pokebuddy "Run the bash command: false. Then reply ok."
+sleep 5
+claude -p --plugin-dir ~/Projects/_private_projects/claude-pokebuddy "/buddy"
+```
+Expected: the second run prints `local import works`, the time line, the crypto line and the four stored values. Read them as:
+- `spike.bash`: the failing call's result. If it carries `isError: true`, the plan's `isError` reading stands. If failure shows only as an exit code field (for example `result.exitCode` or `result.returnCodeInterpretation`), record the field name; Task 11's `tool.call` hook must read success from it.
+- `spike.late` and `spike.model`: if either is missing, unawaited work dies with the hook. Then Task 11 must start speech, judge and evolution finishing from `$.clock.after(0, ...)` timers instead of bare promises; record that.
+- `spike.prompts`: whether the `/buddy` run shows up, and with which `origin`. Task 11 skips prompts that start with `/` or have `origin.kind === 'plugin'` either way.
+- No `getRandomValues`: Task 11 seeds from `crypto.subtle.digest('SHA-256', utf8(String(await $.clock.now()) + Math.random()))` instead.
 
 If the output says the command is refused or not found because `buddy` is a built-in name, rerun Steps 2, 4 and 5 with `pokebuddy` in place of `buddy` and use that name from here on.
 
 - [ ] **Step 6: Record the results in config**
 
-`hooks/config.ts`, filling the two values from Step 5 (`LOCALTIME_MODE` is `'intl'` when `getHours` differs from `utc` or `tz` is not `UTC`, or the machine is genuinely on UTC per `date`; `'process'` when the sandbox reports UTC while `date` shows a different hour):
+`hooks/config.ts`, filling the values from Step 5 (`LOCALTIME_MODE` is `'intl'` when `getHours` matches the hour `date` printed; `'process'` when it does not, meaning the sandbox runs on UTC while the machine does not). Add the spike's other findings as constants or comments in the place each later task reads them (`BASH_FAILURE_FIELD`, `UNAWAITED_WORK_SURVIVES`):
 ```ts
 export const COMMAND = 'buddy'
 export const LOCALTIME_MODE: 'intl' | 'process' = 'intl'
+export const UNAWAITED_WORK_SURVIVES = true
 export const SPEECH_TIMEOUT_MS = 4000
 export const JUDGE_TIMEOUT_MS = 15000
 export const FLASH_MS = 6000
@@ -236,7 +269,7 @@ Run: `claude plugin validate ~/Projects/_private_projects/claude-pokebuddy` (exp
 git add -A
 git commit -m "chore: scaffold mod and record API spike results"
 ```
-Put the spike's one-line output in the commit body.
+Put the spike's output in the commit body.
 
 ---
 
@@ -463,7 +496,8 @@ git commit -m "feat: codec, PRNG and species data types"
 {
   "compilerOptions": {
     "target": "es2023", "module": "esnext", "moduleResolution": "bundler",
-    "strict": true, "noEmit": true, "skipLibCheck": true, "types": ["node"]
+    "strict": true, "noEmit": true, "skipLibCheck": true, "types": ["node"],
+    "allowImportingTsExtensions": true
   },
   "include": ["scripts", "hooks/data/types.ts", "hooks/codec.ts"]
 }
@@ -761,7 +795,8 @@ for (let id = 1; id <= 151; id++) {
   out.push({
     id,
     name: species.names.find((n: any) => n.language.name === 'en').name.toUpperCase(),
-    types: pokemon.types.map((t: any) => t.type.name),
+    // Gen 1 typing: the earliest past_types entry wins (Clefairy is Normal, Magnemite is pure Electric).
+    types: (pokemon.past_types?.[0]?.types ?? pokemon.types).map((t: any) => t.type.name),
     height: pokemon.height,
     weight: pokemon.weight,
     dex: clean(flavour.flavor_text),
@@ -815,6 +850,8 @@ describe('generated pokedex', () => {
     expect(by(133).evolutions.map(e => e.to).sort()).toEqual([134, 135, 136])
     expect(by(42).evolutions).toEqual([])
     expect(by(129).growth).toBe('slow')
+    expect(by(35).types).toEqual(['normal'])
+    expect(by(81).types).toEqual(['electric'])
   })
   test('every sprite has a shiny palette of the same length', () => {
     for (const s of POKEDEX) expect(s.sprite.shiny.length).toBe(s.sprite.palette.length)
@@ -1035,7 +1072,7 @@ git commit -m "feat: deterministic roll and Gen 1 growth curves"
 - Produces:
   - `type Signal = { kind: 'tool' } | { kind: 'config'; path: string } | { kind: 'commit' } | { kind: 'push' } | { kind: 'pr' } | { kind: 'check'; key: string; ok: boolean }`
   - `signalsFromTool(tool: string, input: Record<string, unknown>, isError: boolean): Signal[]` (always includes one `{ kind: 'tool' }` first)
-  - `splitCommand(command: string): string[][]` (segments of tokens)
+  - `type Segment = { tokens: string[]; pipedOut: boolean }`, `splitCommand(command: string): Segment[]`
   - `isConfigPath(path: string): boolean`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1050,8 +1087,18 @@ const bash = (command: string, isError = false) => signalsFromTool('Bash', { com
 describe('splitCommand', () => {
   test('splits on && || ; | outside quotes and keeps quoted words whole', () => {
     expect(splitCommand(`git add . && git commit -m "fix: a && b"; echo 'x | y' | cat`)).toEqual([
-      ['git', 'add', '.'], ['git', 'commit', '-m', 'fix: a && b'], ['echo', 'x | y'], ['cat'],
+      { tokens: ['git', 'add', '.'], pipedOut: false },
+      { tokens: ['git', 'commit', '-m', 'fix: a && b'], pipedOut: false },
+      { tokens: ['echo', 'x | y'], pipedOut: true },
+      { tokens: ['cat'], pipedOut: false },
     ])
+  })
+  test('redirections with & are not separators', () => {
+    expect(splitCommand('./gradlew test 2>&1 | tail -20')).toEqual([
+      { tokens: ['./gradlew', 'test', '2>&1'], pipedOut: true },
+      { tokens: ['tail', '-20'], pipedOut: false },
+    ])
+    expect(splitCommand('npm test &> out.log')).toEqual([{ tokens: ['npm', 'test', '&>', 'out.log'], pipedOut: false }])
   })
 })
 
@@ -1080,7 +1127,15 @@ describe('signalsFromTool', () => {
     expect(bash('npm  test')).toEqual(['tool', 'check:npm test:true'])
     expect(bash('npx vitest run')).toEqual(['tool', 'check:npx vitest run:true'])
     expect(bash('cargo build --release')).toEqual(['tool', 'check:cargo build --release:true'])
+    expect(bash('pytest -q', true)).toEqual(['tool', 'check:pytest -q:false'])
+    expect(bash('tsc --noEmit')).toEqual(['tool', 'check:tsc --noEmit:true'])
+    expect(bash('npm install')).toEqual(['tool'])
     expect(bash('./run-checks.sh')).toEqual(['tool'])
+  })
+  test('a piped check or git command has an unknown outcome and is skipped', () => {
+    expect(bash('./gradlew test 2>&1 | tail -20')).toEqual(['tool'])
+    expect(bash('./gradlew test 2>&1 | tail -20', true)).toEqual(['tool'])
+    expect(bash('git push 2>&1 | tail -5')).toEqual(['tool'])
   })
   test('config edits through Edit, Write and MultiEdit', () => {
     const k = (tool: string, file_path: string) => signalsFromTool(tool, { file_path }, false).map(s => s.kind)
@@ -1113,17 +1168,19 @@ export type Signal =
   | { kind: 'pr' }
   | { kind: 'check'; key: string; ok: boolean }
 
+export type Segment = { tokens: string[]; pipedOut: boolean }
+
 const RUNNERS = new Set(['gradle', 'gradlew', './gradlew', 'mvn', './mvnw', 'npm', 'pnpm', 'yarn', 'bun', 'npx', 'pytest', 'cargo', 'go', 'make', 'tsc', 'eslint', 'ruff', 'jest', 'vitest'])
 const CHECK_WORDS = /\b(test|tests|check|lint|build|vet|typecheck|vitest|jest|pytest|tsc|eslint|ruff|clippy)\b/
 
-export function splitCommand(command: string): string[][] {
-  const segments: string[][] = []
+export function splitCommand(command: string): Segment[] {
+  const segments: Segment[] = []
   let tokens: string[] = []
   let word = ''
   let hasWord = false
   let quote: '"' | "'" | null = null
   const endWord = () => { if (hasWord) tokens.push(word); word = ''; hasWord = false }
-  const endSegment = () => { endWord(); if (tokens.length) segments.push(tokens); tokens = [] }
+  const endSegment = (pipedOut: boolean) => { endWord(); if (tokens.length) segments.push({ tokens, pipedOut }); tokens = [] }
   for (let i = 0; i < command.length; i++) {
     const c = command[i]!
     if (quote) {
@@ -1135,15 +1192,18 @@ export function splitCommand(command: string): string[][] {
     if (c === '"' || c === "'") { quote = c; hasWord = true; continue }
     if (c === '\\' && i + 1 < command.length) { word += command[++i]; hasWord = true; continue }
     if (c === ' ' || c === '\t' || c === '\n') { endWord(); continue }
+    // `2>&1`, `>&2` and `&>` are redirections, not separators.
+    if (c === '&' && (command[i - 1] === '>' || command[i + 1] === '>')) { word += c; hasWord = true; continue }
+    if (c === '|' && command[i + 1] !== '|') { endSegment(true); continue }
     if (c === ';' || c === '|' || c === '&') {
       if ((c === '|' || c === '&') && command[i + 1] === c) i++
-      endSegment()
+      endSegment(false)
       continue
     }
     word += c
     hasWord = true
   }
-  endSegment()
+  endSegment(false)
   return segments
 }
 
@@ -1161,14 +1221,14 @@ export function isConfigPath(path: string): boolean {
 
 function bashSignals(command: string, ok: boolean): Signal[] {
   const out: Signal[] = []
-  for (const raw of splitCommand(command)) {
-    const seg = stripEnv(raw)
+  for (const { tokens, pipedOut } of splitCommand(command)) {
+    const seg = stripEnv(tokens)
     const [cmd, sub, third] = seg
-    if (!cmd || cmd === 'cd') continue
+    if (!cmd || cmd === 'cd' || pipedOut) continue
     if (ok && cmd === 'git' && sub === 'commit' && !seg.includes('--dry-run')) out.push({ kind: 'commit' })
     else if (ok && cmd === 'git' && sub === 'push' && !seg.includes('--dry-run')) out.push({ kind: 'push' })
     else if (ok && cmd === 'gh' && sub === 'pr' && third === 'create') out.push({ kind: 'pr' })
-    else if (RUNNERS.has(cmd) && CHECK_WORDS.test(seg.slice(1).join(' ') || cmd)) out.push({ kind: 'check', key: seg.join(' '), ok })
+    else if (RUNNERS.has(cmd) && CHECK_WORDS.test(seg.join(' '))) out.push({ kind: 'check', key: seg.join(' '), ok })
   }
   return out
 }
@@ -1183,7 +1243,7 @@ export function signalsFromTool(tool: string, input: Record<string, unknown>, is
 }
 ```
 
-Note on `tsc` and `eslint`: `CHECK_WORDS` falls back to the command name when there are no arguments, so a bare `tsc` counts.
+Note: `CHECK_WORDS` is tested against the whole segment, so `pytest -q` and a bare `tsc` count through the runner's own name, while `npm install` does not.
 
 - [ ] **Step 3: Run tests**
 
@@ -1433,7 +1493,7 @@ git commit -m "feat: per-turn EXP tally and evolution rules"
   - `finishEvolution(save: Save): { save: Save; events: GameEvent[] }`, `cancelEvolution(save: Save): { save: Save; cancelled: boolean }`
   - `feed(save: Save, local: LocalTime): { save: Save; events: GameEvent[]; fed: boolean; gained: number }`
   - `useStone(save: Save, stone: Stone): { save: Save; events: GameEvent[]; error?: string }`
-  - `type LocalTime = { date: string; hour: number }` (date `YYYY-MM-DD`), `localTime($: EngineInterface, nowMs: number): Promise<LocalTime>`, `previousDate(date: string): string`
+  - `type LocalTime = { date: string; hour: number }` (date `YYYY-MM-DD`), `readOffset($: EngineInterface): Promise<number | null>`, `localTime(nowMs: number, offsetMin: number | null): LocalTime`, `previousDate(date: string): string`
 
 `Save`:
 ```ts
@@ -1501,7 +1561,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
 import { applyExp, applyTurn, cancelEvolution, feed, finishEvolution, useStone } from '../hooks/game'
-import { previousDate } from '../hooks/localtime'
+import { localTime, previousDate } from '../hooks/localtime'
 import { freshSave, type Save } from '../hooks/state'
 import { emptyTally, scoreTally } from '../hooks/tally'
 
@@ -1590,6 +1650,11 @@ describe('game', () => {
     expect(previousDate('2026-03-01')).toBe('2026-02-28')
     expect(previousDate('2026-01-01')).toBe('2025-12-31')
   })
+  test('localTime with an offset', () => {
+    const t = Date.UTC(2026, 9, 11, 23, 30)
+    expect(localTime(t, 120)).toEqual({ date: '2026-10-12', hour: 1 })
+    expect(localTime(t, -300)).toEqual({ date: '2026-10-11', hour: 18 })
+  })
 })
 
 function nextDate(d: string): string {
@@ -1603,6 +1668,8 @@ Expected: FAIL, modules not found.
 
 - [ ] **Step 2: Implement `hooks/localtime.ts`**
 
+The offset is read once per session (in `session.start`, Task 11), never per turn.
+
 ```ts
 import type { EngineInterface } from 'claude-code'
 import { LOCALTIME_MODE } from './config'
@@ -1611,16 +1678,26 @@ export type LocalTime = { date: string; hour: number }
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
-export async function localTime($: EngineInterface, nowMs: number): Promise<LocalTime> {
-  if (LOCALTIME_MODE === 'process') {
-    try {
-      const r = await $.process.run(['date', '+%Y-%m-%d %H'])
-      const [date, hour] = r.stdout.trim().split(' ')
-      if (date && hour) return { date, hour: Number(hour) }
-    } catch {}
+/** Minutes east of UTC, or null to use the sandbox's own local time. */
+export async function readOffset($: EngineInterface): Promise<number | null> {
+  if (LOCALTIME_MODE !== 'process') return null
+  try {
+    const z = (await $.process.run(['date', '+%z'])).stdout.trim()
+    const m = z.match(/^([+-])(\d{2})(\d{2})$/)
+    if (!m) return null
+    return (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3]))
+  } catch {
+    return null
   }
-  const d = new Date(nowMs)
-  return { date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, hour: d.getHours() }
+}
+
+export function localTime(nowMs: number, offsetMin: number | null): LocalTime {
+  if (offsetMin === null) {
+    const d = new Date(nowMs)
+    return { date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, hour: d.getHours() }
+  }
+  const d = new Date(nowMs + offsetMin * 60000)
+  return { date: d.toISOString().slice(0, 10), hour: d.getUTCHours() }
 }
 
 export function previousDate(date: string): string {
@@ -2438,9 +2515,9 @@ git commit -m "feat: /buddy sub-commands and their texts"
 
 State held where:
 - `$.store` key `save`: the `Save`.
-- `$.store` key `save.bak`: the raw value of a corrupt save, written once before a fresh roll.
+- `$.store` key `save.bak`: the raw value of a corrupt save, written before a fresh roll, or the previous save before an import.
 - `$.state` (`types/index.d.ts`), plugin `claude-pokebuddy`: `save: Save | null` (mirror for drawing), `bubble: string | null`, `flashUntil: number`, `readOnly: boolean`.
-- Module variables (reset on reload, fine): the current turn's `Tally`, `lastWindow`.
+- Module variables (reset on reload, fine): the current turn's `Tally`, `lastWindow`, the time-zone `offset`.
 
 - [ ] **Step 1: Write the contract**
 
@@ -2467,7 +2544,7 @@ If `claude plugin validate` refuses an import inside the contract, inline the `S
 `tests/register.test.tsx`:
 ```tsx
 import { describe, expect, mock, test } from 'claude-code/testing'
-import { shouldHandleTurn } from '../hooks/register'
+import { countsAsPrompt, shouldHandleTurn } from '../hooks/register'
 import { exportBlob, freshSave } from '../hooks/state'
 
 const usage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
@@ -2517,6 +2594,34 @@ describe('register', () => {
     expect(await $.store.get('save')).toEqual(s)
   })
 
+  test('a change another session wrote to the store survives this session\'s next command', async ($, on) => {
+    const s = freshSave([1, 2, 3, 4])
+    mock.store(on, { save: s })
+    mock.clock(on, { now: Date.UTC(2026, 9, 11, 12) })
+    await $.command.run({ command: 'buddy', args: 'stats' })
+    await $.store.set('save', { ...s, nickname: 'Other', lifetimeExp: 999 })
+    await $.command.run({ command: 'buddy', args: 'toggle' })
+    const after = await $.store.get('save') as { nickname: string; lifetimeExp: number; view: string }
+    expect(after.nickname).toBe('Other')
+    expect(after.lifetimeExp).toBe(999)
+    expect(after.view).toBe('full')
+  })
+
+  test('a save stuck mid-evolution is finished on load', async ($, on) => {
+    mock.store(on, { save: { ...freshSave([1, 2, 3, 4]), species: 4, level: 16, evolution: { to: 5 } } })
+    mock.clock(on)
+    await $.command.run({ command: 'buddy', args: 'stats' })
+    const after = await $.store.get('save') as { species: number; evolution: unknown }
+    expect(after.species).toBe(5)
+    expect(after.evolution).toBe(null)
+  })
+
+  test('slash commands and plugin prompts earn no prompt EXP', () => {
+    expect(countsAsPrompt({ text: '/buddy feed', origin: { kind: 'composer' } })).toBe(false)
+    expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'plugin', name: 'x' } })).toBe(false)
+    expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'composer' } })).toBe(true)
+  })
+
   test('only main-loop turns are handled', () => {
     expect(shouldHandleTurn({ isAborted: false })).toBe(true)
     expect(shouldHandleTurn({ agentId: 'a1', isAborted: false })).toBe(false)
@@ -2548,19 +2653,21 @@ Expected: FAIL (the stub registers nothing).
 
 - [ ] **Step 3: Implement `hooks/register.tsx`**
 
+Every change goes through `mutate`, which reads the store fresh, so a second open session never overwrites this one's progress. If the spike found that unawaited work dies with the hook (`UNAWAITED_WORK_SURVIVES` false), wrap each `void ...` below in `$.clock.after(0, () => ...)`. If it found failure in a result field rather than `isError`, read that field in `failed()`.
+
 ```tsx
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
-import { exportBlob, freshSave, importBlob, parseSave, type Save } from './state'
-import { COMMAND, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
 import { dexText, helpText, parseArgs, parseStone, statsText } from './commands'
+import { COMMAND, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
 import { findSpecies, species } from './data/dex'
-import { cancelEvolution, feed, finishEvolution, applyExp, applyTurn, useStone, type GameEvent } from './game'
+import { applyExp, applyTurn, cancelEvolution, feed, finishEvolution, useStone, type GameEvent } from './game'
 import { judge } from './judge'
-import { localTime } from './localtime'
+import { localTime, readOffset } from './localtime'
 import { band } from './render/band'
 import { signalsFromTool } from './signals'
 import { speak, turnFacts } from './speech'
+import { exportBlob, freshSave, importBlob, parseSave, type Save } from './state'
 import { emptyTally, scoreTally, type Tally } from './tally'
 
 const P = 'claude-pokebuddy'
@@ -2570,41 +2677,53 @@ const flashAtom = atom({ plugin: P, key: 'flashUntil' } as const, 0)
 const readOnlyAtom = atom({ plugin: P, key: 'readOnly' } as const, false)
 
 const WINDOW_MS = 10 * 60 * 1000
+const READ_ONLY = 'Your pokebuddy save is from a newer version of the mod. Update the mod; nothing was changed.'
 
 export function shouldHandleTurn(e: { agentId?: string; isAborted: boolean }): boolean {
   return e.agentId === undefined
+}
+
+export function countsAsPrompt(e: { text: string; origin: { kind: string } }): boolean {
+  return e.origin.kind !== 'plugin' && !e.text.trimStart().startsWith('/')
+}
+
+function failed(ran: unknown): boolean {
+  const r = ran as { deny?: string; isError?: boolean }
+  return r.deny !== undefined || r.isError === true
 }
 
 export const register: Register = (on, options) => {
   const model = String(options?.speechModel ?? 'haiku')
   let tally: Tally = emptyTally()
   let lastWindow = -1
+  let offset: number | null = null
 
-  async function load($: EngineInterface): Promise<Save | null> {
-    const cached = await read($, saveAtom)
-    if (cached) return cached
+  /** Reads the save fresh from the store. null when it is from a newer version. */
+  async function loadFresh($: EngineInterface): Promise<Save | null> {
     const raw = await $.store.get('save')
     const parsed = parseSave(raw)
     if (parsed.kind === 'future') {
       await update($, readOnlyAtom, () => true)
       return null
     }
-    let save: Save
-    if (parsed.kind === 'ok') save = parsed.save
-    else {
-      if (parsed.kind === 'corrupt') await $.store.set('save.bak', raw as never)
-      const seed = Array.from(crypto.getRandomValues(new Uint32Array(4)))
-      save = freshSave(seed)
-      await $.store.set('save', save)
-      if (parsed.kind === 'corrupt') $.ui.toast('Your pokebuddy save was damaged. It was backed up as save.bak and a new Pokémon was rolled.')
-    }
-    await update($, saveAtom, () => save)
+    if (parsed.kind === 'ok') return parsed.save
+    if (parsed.kind === 'corrupt') await $.store.set('save.bak', raw as never)
+    const seed = Array.from(crypto.getRandomValues(new Uint32Array(4)))
+    const save = freshSave(seed)
+    await $.store.set('save', save)
+    if (parsed.kind === 'corrupt') $.ui.toast('Your pokebuddy save was damaged. It was backed up as save.bak and a new Pokémon was rolled.')
     return save
   }
 
-  async function persist($: EngineInterface, save: Save) {
-    await update($, saveAtom, () => save)
-    await $.store.set('save', save)
+  /** Read fresh, change, write back, refresh the drawing copy. */
+  async function mutate<T>($: EngineInterface, change: (s: Save) => { save: Save; events?: readonly GameEvent[] } & T): Promise<(T & { save: Save }) | null> {
+    const cur = await loadFresh($)
+    if (!cur) return null
+    const r = change(cur)
+    await $.store.set('save', r.save)
+    await update($, saveAtom, () => r.save)
+    if (r.events?.length) await announce($, r.events, r.save)
+    return r
   }
 
   async function announce($: EngineInterface, events: readonly GameEvent[], save: Save) {
@@ -2620,75 +2739,64 @@ export const register: Register = (on, options) => {
       $.clock.after(FLASH_MS + 50, () => $.ui.invalidate('ui.render'))
     }
     if (events.some(e => e.kind === 'evolving')) {
-      $.clock.after(EVOLVE_MS, async () => {
-        const cur = await read($, saveAtom)
-        if (!cur?.evolution) return
-        const done = finishEvolution(cur)
-        await persist($, done.save)
-        await announce($, done.events, done.save)
-      })
+      $.clock.after(EVOLVE_MS, () => mutate($, s => finishEvolution(s)))
     }
   }
 
-  const readOnlyText = 'Your pokebuddy save is from a newer version of the mod. Update the mod; nothing was changed.'
-
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: COMMAND, description: 'Your Gen 1 Pokémon buddy: stats, dex, feed, evolve' })
-    const save = await load($)
-    if (save && save.pendingLog.length > 0) {
-      const log = save.pendingLog
-      void judge($, model, log).then(async score => {
-        const cur = (await read($, saveAtom)) ?? save
-        const cleared = { ...cur, pendingLog: [] }
-        if (score === null) return persist($, cleared)
-        const r = applyExp(cleared, { judge: score })
-        await persist($, r.save)
+    offset = await readOffset($)
+    // A reload or exit inside the evolution window drops its timer; finish it now.
+    const loaded = await mutate($, s => (s.evolution ? finishEvolution(s) : { save: s }))
+    // Take the pending log first, then score it, so a second session cannot judge the same turns.
+    let taken: string[] = []
+    if (loaded && loaded.save.pendingLog.length > 0) {
+      await mutate($, s => {
+        taken = s.pendingLog
+        return { save: { ...s, pendingLog: [] } }
+      })
+    }
+    if (taken.length > 0) {
+      void judge($, model, taken).then(async score => {
+        if (score === null) return
+        await mutate($, s => applyExp(s, { judge: score }))
         $.ui.toast(`Last session judged ${score}/100: +${score} EXP`)
-        await announce($, r.events, r.save)
       })
     }
     return next(e)
   })
 
   on('prompt.submit', async ($, e, next) => {
-    tally.prompts++
-    const window = Math.floor((await $.clock.now()) / WINDOW_MS)
-    if (window !== lastWindow) { tally.activeWindows++; lastWindow = window }
+    if (countsAsPrompt(e)) {
+      tally.prompts++
+      const window = Math.floor((await $.clock.now()) / WINDOW_MS)
+      if (window !== lastWindow) { tally.activeWindows++; lastWindow = window }
+    }
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
-    const isError = 'deny' in ran && ran.deny !== undefined ? true : Boolean((ran as { isError?: boolean }).isError)
-    tally.signals.push(...signalsFromTool(String(e.tool), e as unknown as Record<string, unknown>, isError))
+    try {
+      tally.signals.push(...signalsFromTool(String(e.tool), e as unknown as Record<string, unknown>, failed(ran)))
+    } catch {}
     return ran
-  })
+  }).catch(($, e, next) => next(e))
 
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     if (!shouldHandleTurn(e)) return result
-    const save = await load($)
-    if (!save) return result
     const turn = tally
     tally = emptyTally()
-    const local = await localTime($, await $.clock.now())
-    const scored = scoreTally(turn, save.checks)
+    const local = localTime(await $.clock.now(), offset)
     const facts = turnFacts(turn.signals, turn.prompts)
-    const applied = applyTurn(save, scored, local)
-    const withLog = { ...applied.save, pendingLog: [...applied.save.pendingLog, facts].slice(-PENDING_LOG_MAX) }
-    await persist($, withLog)
-    await announce($, applied.events, withLog)
-    if (withLog.speechOn) {
-      void speak($, model, withLog, facts).then(line => update($, bubbleAtom, () => line))
-    }
+    const r = await mutate($, s => {
+      const applied = applyTurn(s, scoreTally(turn, s.checks), local)
+      return { ...applied, save: { ...applied.save, pendingLog: [...applied.save.pendingLog, facts].slice(-PENDING_LOG_MAX) } }
+    })
+    if (r?.save.speechOn) void speak($, model, r.save, facts).then(line => update($, bubbleAtom, () => line))
     return result
-  })
-
-  on('session.end', async ($, e, next) => {
-    const save = await read($, saveAtom)
-    if (save) await $.store.set('save', save)
-    return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   on('command.run', { command: COMMAND }, async ($, e) => {
     const { sub, rest } = parseArgs(e.args)
@@ -2697,61 +2805,71 @@ export const register: Register = (on, options) => {
       const s = findSpecies(rest)
       return { text: s ? dexText(s, false) : `No Gen 1 Pokémon called "${rest}".` }
     }
-    const save = await load($)
-    if (!save) return { text: readOnlyText }
-    const now = await $.clock.now()
+    const local = localTime(await $.clock.now(), offset)
     switch (sub) {
-      case 'stats': return { text: statsText(save) }
-      case 'dex': return { text: dexText(species(save.species), true) }
+      case 'stats': {
+        const s = await loadFresh($)
+        if (s) await update($, saveAtom, () => s)
+        return { text: s ? statsText(s) : READ_ONLY }
+      }
+      case 'dex': {
+        const s = await loadFresh($)
+        return { text: s ? dexText(species(s.species), true) : READ_ONLY }
+      }
       case 'feed': {
-        const r = feed(save, await localTime($, now))
-        if (!r.fed) return { text: `${species(save.species).name} has already eaten today. Come back tomorrow.` }
-        await persist($, r.save)
-        await announce($, r.events, r.save)
-        return { text: `You fed ${species(save.species).name} a Rare Candy. +${r.gained} EXP. Streak: ${r.save.counters.feedRun} day${r.save.counters.feedRun === 1 ? '' : 's'}.` }
+        const r = await mutate($, s => feed(s, local))
+        if (!r) return { text: READ_ONLY }
+        const name = species(r.save.species).name
+        if (!r.fed) return { text: `${name} has already eaten today. Come back tomorrow.` }
+        const days = r.save.counters.feedRun
+        return { text: `You fed ${name} a Rare Candy. +${r.gained} EXP. Streak: ${days} day${days === 1 ? '' : 's'}.` }
       }
       case 'use': {
         const stone = parseStone(rest)
         if (!stone) return { text: 'Which stone? moon, fire, water, thunder or leaf.' }
-        const r = useStone(save, stone)
+        let from = 0
+        const r = await mutate($, s => { from = s.species; return useStone(s, stone) })
+        if (!r) return { text: READ_ONLY }
         if (r.error) return { text: r.error }
-        await persist($, r.save)
-        await announce($, r.events, r.save)
-        return { text: `${species(save.species).name} evolved into ${species(r.save.species).name}!` }
+        return { text: `${species(from).name} evolved into ${species(r.save.species).name}!` }
       }
       case 'stop': {
-        const r = cancelEvolution(save)
-        if (!r.cancelled) return { text: 'Nothing is evolving right now.' }
-        await persist($, r.save)
-        return { text: `Huh? ${species(save.species).name} stopped evolving!` }
+        const r = await mutate($, s => cancelEvolution(s))
+        if (!r) return { text: READ_ONLY }
+        return { text: r.cancelled ? `Huh? ${species(r.save.species).name} stopped evolving!` : 'Nothing is evolving right now.' }
       }
       case 'toggle': {
-        const next = { ...save, view: save.view === 'full' ? 'compact' as const : 'full' as const }
-        await persist($, next)
-        return { text: `Showing the ${next.view} view.` }
+        const r = await mutate($, s => ({ save: { ...s, view: s.view === 'full' ? 'compact' as const : 'full' as const } }))
+        return { text: r ? `Showing the ${r.save.view} view.` : READ_ONLY }
       }
       case 'quiet': {
-        const next = { ...save, speechOn: !save.speechOn }
-        await persist($, next)
-        if (!next.speechOn) await update($, bubbleAtom, () => null)
-        return { text: next.speechOn ? 'Speech is on.' : 'Speech is off. No model calls will be made for reactions.' }
+        const r = await mutate($, s => ({ save: { ...s, speechOn: !s.speechOn } }))
+        if (!r) return { text: READ_ONLY }
+        if (!r.save.speechOn) await update($, bubbleAtom, () => null)
+        return { text: r.save.speechOn ? 'Speech is on.' : 'Speech is off. No model calls will be made for reactions.' }
       }
       case 'nickname': {
         const nickname = rest.trim().slice(0, 12) || null
-        await persist($, { ...save, nickname })
+        const r = await mutate($, s => ({ save: { ...s, nickname } }))
+        if (!r) return { text: READ_ONLY }
         return { text: nickname ? `Nickname set to ${nickname}.` : 'Nickname cleared.' }
       }
       case 'export': {
-        const blob = exportBlob(save)
+        const s = await loadFresh($)
+        if (!s) return { text: READ_ONLY }
+        const blob = exportBlob(s)
         const copied = await $.ui.copy({ text: blob })
         return { text: copied.isCopied ? 'Save copied to the clipboard.' : `Copy this save:\n${blob}` }
       }
       case 'import': {
-        const r = importBlob(rest)
-        if (r.kind === 'bad') return { text: r.reason }
-        await $.store.set('save.bak', save)
-        await persist($, r.save)
-        return { text: `Restored ${species(r.save.species).name} at Lv ${r.save.level}. Your previous save is in save.bak.` }
+        const parsed = importBlob(rest)
+        if (parsed.kind === 'bad') return { text: parsed.reason }
+        const prev = await $.store.get('save')
+        if (prev !== undefined) await $.store.set('save.bak', prev as never)
+        await $.store.set('save', parsed.save)
+        await update($, saveAtom, () => parsed.save)
+        await update($, readOnlyAtom, () => false)
+        return { text: `Restored ${species(parsed.save.species).name} at Lv ${parsed.save.level}. Your previous save is in save.bak.` }
       }
     }
   })
@@ -2774,6 +2892,8 @@ export const register: Register = (on, options) => {
 }
 ```
 
+There is no `session.end` hook: every change is already in the store when it happens.
+
 Adjust to the exact types where the compiler says so: the `tool.call` result union (`isError` is only on the answered arm), `e.viewport`, `$.ui.copy`'s argument, and the `options` type. Do not loosen with `any`; narrow with the types' own discriminants.
 
 - [ ] **Step 4: Run all checks**
@@ -2785,7 +2905,7 @@ npx -y -p typescript@5.6.3 tsc -p ~/Projects/_private_projects/claude-pokebuddy
 claude plugin test ~/Projects/_private_projects/claude-pokebuddy
 npm run test:scripts
 ```
-Expected: validate lists `session.start`, `prompt.submit`, `tool.call`, `turn.complete`, `session.end`, `command.run` (answers its own command `buddy`), `ui.render`; tsc clean; all tests PASS.
+Expected: validate lists `session.start`, `prompt.submit`, `tool.call`, `turn.complete`, `command.run` (answers its own command `buddy`), `ui.render`; the three gating hooks show `with .catch`; tsc clean; all tests PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -2829,7 +2949,7 @@ Each fix: a failing test in the owning task's test file, the fix, the full suite
 
 - [ ] **Step 1: README**
 
-Sections, in this order, no em dashes: what it is (one paragraph and a screenshot placeholder path `docs/screenshot.png` the user adds); Install (the code block `/plugin install claude-pokebuddy --marketplace yonatankarp/claude-pokebuddy`, then "answer `y` to add the marketplace and pick the user scope"); Commands (the help list); How EXP works (the table from the spec); Evolution (levels, the stone table, trades at Lv 36+, Eevee by stone); Cost and privacy (one Haiku call per turn and one per session start, only a fact summary is sent, never code or prompts; `/buddy quiet` and the `speechModel` option); Building the data (`npm ci && npm run data`); Disclaimer (the LICENSE paragraph).
+Sections, in this order, no em dashes: what it is (one paragraph and a screenshot placeholder path `docs/screenshot.png` the user adds); Requirements (Claude Code 2.1.296 or newer; the mod API is early access and may change between releases); Install (the code block `/plugin install claude-pokebuddy --marketplace yonatankarp/claude-pokebuddy`, then "answer `y` to add the marketplace and pick the user scope"); Commands (the help list); How EXP works (the table from the spec); Evolution (levels, the stone table, trades at Lv 36+, Eevee by stone); Cost and privacy (one Haiku call per turn and one per session start, only a fact summary is sent, never code or prompts; `/buddy quiet` and the `speechModel` option); Building the data (`npm ci && npm run data`); Disclaimer (the LICENSE paragraph).
 
 - [ ] **Step 2: CI**
 
@@ -2847,7 +2967,7 @@ jobs:
       - run: npm ci
       - run: npm run test:scripts
       - run: npx tsc -p tsconfig.scripts.json
-      - run: npm install -g @anthropic-ai/claude-code
+      - run: npm install -g @anthropic-ai/claude-code@2.1.296
       - run: claude plugin validate .
       - run: claude plugin test .
 ```
