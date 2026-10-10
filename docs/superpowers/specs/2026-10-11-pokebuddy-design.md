@@ -98,7 +98,7 @@ Local time comes from the sandbox's `Intl` time zone when available, else from `
 
 ## Speech
 
-On `turn.complete`, one `$.model.complete` call with a 4-second timeout, on `claude-haiku-5-5` by default (a `userConfig` option). The prompt holds the species, level, personality and the turn's facts: tools used, file names touched, check results, commits and pushes. It never holds code or prompt text. Expected size is about 150 tokens in and 30 out. On failure or timeout the bubble shows a canned cry. `/buddy quiet` turns speech off. The call is fire-and-forget and never delays the turn.
+On `turn.complete`, one `$.model.complete` call with a 4-second timeout, on the `haiku` alias by default (a `userConfig` option `speechModel`), so it tracks the cheapest Haiku. The prompt holds the species, level, personality and the turn's facts: tools used, file names touched, check results, commits and pushes. It never holds code or prompt text. Expected size is about 150 tokens in and 30 out. On failure or timeout the bubble shows a canned cry. `/buddy quiet` turns speech off. The call is fire-and-forget and never delays the turn.
 
 ## Session judge
 
