@@ -1,0 +1,5 @@
+{
+  "name": "pokebuddy",
+  "owner": { "name": "Yonatan Karp-Rudin" },
+  "plugins": [{ "name": "pokebuddy", "source": "./" }]
+}

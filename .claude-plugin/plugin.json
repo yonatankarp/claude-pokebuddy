@@ -1,0 +1,14 @@
+{
+  "name": "pokebuddy",
+  "version": "0.1.0",
+  "description": "A Gen 1 Pokémon buddy above your prompt that levels up and evolves from real work.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "speechModel": {
+      "type": "string",
+      "title": "Speech model",
+      "description": "Model alias or id for the buddy's reactions and the session judge.",
+      "default": "haiku"
+    }
+  }
+}

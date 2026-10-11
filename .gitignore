@@ -1,1 +1,4 @@
+node_modules/
+scripts/raw/
+.claude-plugin/types/
 .superpowers/
