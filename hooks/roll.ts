@@ -1,4 +1,4 @@
-import { POKEDEX } from './data/pokedex.generated'
+import { POKEDEX } from './data/dex'
 import type { Species } from './data/types'
 import { sfc32 } from './rng'
 

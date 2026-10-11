@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cropAndIndex, iconShinyPalette, packNibbles } from './pack.ts'
+import { alignOffset, clearBorderWhite, clearFrames, cropAndIndex, iconShinyPalette, indexFrames, packNibbles, sliceFrames } from './pack.ts'
 
 test('packNibbles puts two pixels per byte, high nibble first', () => {
   assert.deepEqual(Array.from(packNibbles([1, 2, 3])), [0x12, 0x30])
@@ -39,4 +39,76 @@ test('iconShinyPalette shifts each icon colour by its nearest Crystal colour\'s 
 
 test('iconShinyPalette keeps index 0 transparent and ignores it when matching', () => {
   assert.deepEqual(iconShinyPalette(['', '#000000'], ['', '#101010'], ['', '#202020']), ['', '#101010'])
+})
+
+const W = [255, 255, 255, 255], K = [0, 0, 0, 255], R = [248, 0, 0, 255]
+const image = (rows: number[][][]) => new Uint8Array(rows.flat(2))
+
+test('clearBorderWhite makes only the white reachable from the edge transparent, 4-connected', () => {
+  // A black ring holding white inside; the corner gap is diagonal only, so the inside stays white.
+  const rgba = image([
+    [W, W, W, W],
+    [W, K, K, W],
+    [W, K, W, K],
+    [W, W, K, W],
+  ])
+  const out = clearBorderWhite(rgba, 4, 4)
+  const alpha = (x: number, y: number) => out[(y * 4 + x) * 4 + 3]
+  assert.equal(alpha(0, 0), 0)
+  assert.equal(alpha(3, 3), 0)
+  assert.equal(alpha(1, 1), 255)
+  assert.equal(alpha(2, 2), 255)
+})
+
+test('sliceFrames cuts a vertical strip into square frames', () => {
+  const strip = image([[R, W], [W, R], [K, K], [W, W]])
+  const frames = sliceFrames(strip, 2, 4)
+  assert.equal(frames.length, 2)
+  assert.deepEqual(Array.from(frames[1]!), [...K, ...K, ...W, ...W])
+  assert.throws(() => sliceFrames(strip, 2, 3), /not a strip of square frames/)
+})
+
+test('indexFrames crops every frame to one union box and maps to the nearest palette colour', () => {
+  const T = [255, 255, 255, 0], NEAR_RED = [240, 8, 0, 255]
+  const a = image([[T, T, T], [T, R, T], [T, T, T]])
+  const b = image([[T, T, T], [T, T, K], [T, T, NEAR_RED]])
+  const out = indexFrames([a, b], 3, ['', '#000000', '#f80000'])
+  assert.equal(out.w, 2)
+  assert.equal(out.h, 2)
+  assert.deepEqual(out.frames, [[2, 0, 0, 0], [0, 1, 0, 2]])
+})
+
+test('clearBorderWhite honours fixed pixels: kept ones stay, cleared ones seed the fill', () => {
+  const rgba = image([
+    [W, W, K, W, W],
+    [K, K, K, K, K],
+    [K, W, W, K, W],
+    [K, K, K, K, W],
+    [W, W, W, W, W],
+  ])
+  const alpha = (out: Uint8Array, x: number, y: number) => out[(y * 5 + x) * 4 + 3]
+  // Pinned: (0,0) opaque although on the border; (1,2) clear, taking its enclosed white neighbour (2,2).
+  const fixed = (p: number) => (p === 0 ? 'keep' : p === 11 ? 'clear' : null)
+  const out = clearBorderWhite(rgba, 5, 5, fixed)
+  assert.deepEqual([alpha(out, 0, 0), alpha(out, 1, 0), alpha(out, 1, 2), alpha(out, 2, 2), alpha(out, 4, 2)], [255, 0, 0, 0, 0])
+  assert.equal(alpha(clearBorderWhite(rgba, 5, 5), 2, 2), 255)
+})
+
+test('alignOffset finds where a frame sits inside the 56x56 PokeAPI canvas', () => {
+  const T = [0, 0, 0, 0]
+  const ref = image([[T, T, T, T], [T, T, R, K], [T, T, K, R], [T, T, T, T]])
+  const frame = image([[R, K], [K, R]])
+  assert.deepEqual(alignOffset(ref, 4, frame, 2), { x: 2, y: 1 })
+})
+
+test('clearFrames takes frame 0\'s transparency from the reference and fills only what a frame changed', () => {
+  const T = [0, 0, 0, 0]
+  // Reference: a 3x3 canvas holding the 2x2 art at (1,1); its top-left white is art, its bottom-right background.
+  const ref = image([[T, T, T], [T, W, K], [T, K, T]])
+  // Frame 0 is the art; frame 1 turns the bottom-right pixel black, which then is art.
+  const strip = image([[W, K], [K, W], [W, K], [K, K]])
+  const [f0, f1] = clearFrames(strip, 2, 4, ref, 3)
+  const alpha = (f: Uint8Array) => [0, 1, 2, 3].map(p => f[p * 4 + 3])
+  assert.deepEqual(alpha(f0!), [255, 255, 255, 0])
+  assert.deepEqual(alpha(f1!), [255, 255, 255, 255])
 })

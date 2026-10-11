@@ -1,5 +1,8 @@
-import { POKEDEX } from './pokedex.generated'
+import { ANIMATIONS } from './animation.generated'
+import { POKEDEX as DATA } from './pokedex.generated'
 import type { Species } from './types'
+
+export const POKEDEX: readonly Species[] = DATA.map((s, i) => ({ ...s, ...ANIMATIONS[i]! }))
 
 export function species(id: number): Species {
   const s = POKEDEX[id - 1]

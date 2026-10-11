@@ -4,6 +4,9 @@ const RAW = new URL('./raw/', import.meta.url)
 const SPRITES = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-ii/crystal/transparent'
 const ICONS = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-vii/icons'
 const API = 'https://pokeapi.co/api/v2'
+const CRYSTAL = 'https://raw.githubusercontent.com/pret/pokecrystal/master/gfx/pokemon'
+/** pokecrystal's folder names where they differ from PokeAPI's species name. */
+const CRYSTAL_DIRS: Record<number, string> = { 29: 'nidoran_f', 32: 'nidoran_m', 83: 'farfetch_d', 122: 'mr__mime' }
 
 const exists = (p: URL) => access(p).then(() => true, () => false)
 
@@ -26,6 +29,7 @@ await mkdir(new URL('icons/', RAW), { recursive: true })
 await mkdir(new URL('species/', RAW), { recursive: true })
 await mkdir(new URL('pokemon/', RAW), { recursive: true })
 await mkdir(new URL('chains/', RAW), { recursive: true })
+await mkdir(new URL('crystal/', RAW), { recursive: true })
 
 for (let id = 1; id <= 151; id++) {
   await get(`${SPRITES}/${id}.png`, new URL(`sprites/${id}.png`, RAW), 'bytes')
@@ -36,6 +40,15 @@ for (let id = 1; id <= 151; id++) {
   const species = JSON.parse(await readFile(new URL(`species/${id}.json`, RAW), 'utf8'))
   const chainId = Number(String(species.evolution_chain.url).split('/').filter(Boolean).pop())
   await get(species.evolution_chain.url, new URL(`chains/${chainId}.json`, RAW), 'json')
+  const dir = CRYSTAL_DIRS[id] ?? String(species.name)
+  await mkdir(new URL(`crystal/${id}/`, RAW), { recursive: true })
+  for (const file of ['front.png', 'anim.asm', 'anim_idle.asm']) {
+    try {
+      await get(`${CRYSTAL}/${dir}/${file}`, new URL(`crystal/${id}/${file}`, RAW), 'bytes')
+    } catch (err) {
+      throw new Error(`#${id}: pokecrystal has no gfx/pokemon/${dir}/${file} (${(err as Error).message})`)
+    }
+  }
   process.stdout.write(`\r${id}/151`)
 }
 process.stdout.write('\n')

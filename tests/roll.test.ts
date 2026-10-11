@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { POKEDEX } from '../hooks/data/pokedex.generated'
+import { POKEDEX } from '../hooks/data/dex'
 import { findSpecies } from '../hooks/data/dex'
 import { LEGENDARIES, rollFrom, rollWeight } from '../hooks/roll'
 import { sfc32 } from '../hooks/rng'

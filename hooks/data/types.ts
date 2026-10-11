@@ -10,7 +10,11 @@ export type Evolution =
   | { kind: 'trade'; to: number }
 /** 4 bits per pixel, row-major, base64. Index 0 is transparent. */
 export type Sprite = { w: number; h: number; px: string; palette: readonly string[]; shiny: readonly string[] }
-export type Species = {
+/** Like Sprite's pixels, but each frame's 4-bit values are run-length coded (rleEncode) before base64. */
+export type Frames = { w: number; h: number; px: readonly string[] }
+/** One step of a Crystal pic animation: show frame `frame` for `ticks` Crystal ticks. */
+export type AnimStep = { frame: number; ticks: number }
+export type SpeciesData = {
   id: number
   name: string
   types: readonly PokemonType[]
@@ -27,3 +31,14 @@ export type Species = {
   /** The Gen 7 menu icon (40x30 before cropping), for bands too short for the sprite. */
   icon: Sprite
 }
+export type Animation = {
+  /**
+   * The Crystal animation frames, all cropped to one box so they stay aligned and drawn with
+   * `sprite.palette` or `sprite.shiny`. Frame 0 is the base pose.
+   */
+  frames: Frames
+  /** The Crystal pic animations, loops unrolled: `intro` as the Pokémon appears, `idle` while it waits. */
+  anim: { intro: readonly AnimStep[]; idle: readonly AnimStep[] }
+}
+/** pokedex.generated.ts and animation.generated.ts hold the two halves: each file stays under the loader's 1 MiB. */
+export type Species = SpeciesData & Animation

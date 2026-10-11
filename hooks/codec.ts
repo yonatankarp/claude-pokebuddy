@@ -41,3 +41,21 @@ export function fnv1a(s: string): string {
   }
   return h.toString(16).padStart(8, '0')
 }
+
+/** Run-length codes 4-bit values: one byte per run of up to 16, the run length less one high, the value low. */
+export function rleEncode(nibbles: readonly number[]): Uint8Array {
+  const out: number[] = []
+  for (let i = 0; i < nibbles.length;) {
+    let j = i + 1
+    while (j < nibbles.length && j - i < 16 && nibbles[j] === nibbles[i]) j++
+    out.push(((j - i - 1) << 4) | nibbles[i]!)
+    i = j
+  }
+  return new Uint8Array(out)
+}
+
+export function rleDecode(bytes: Uint8Array): number[] {
+  const out: number[] = []
+  for (const b of bytes) for (let n = (b >> 4) + 1; n > 0; n--) out.push(b & 15)
+  return out
+}
