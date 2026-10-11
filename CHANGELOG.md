@@ -3,6 +3,7 @@
 ## 1.0.2 (2026-10-11)
 
 - The Claude desktop app and the editor count as a person watching: the buddy now speaks, earns EXP, logs turns and judges past sessions there. They host the session through the SDK, so it used to be treated like a headless `-p` run.
+- Skills earned from real work: DEBUGGING (checks turned green), SHIPPING (commits, pushes, PRs), HACKING (tool calls), FOCUS (prompts, active time), TINKERING (config edits) and WISDOM (session judge), each 0 to 99. `/buddy stats` lists them, and the desktop app draws them as bars beside the sprite.
 
 ## 1.0.1 (2026-10-11)
 

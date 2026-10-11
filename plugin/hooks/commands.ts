@@ -30,6 +30,24 @@ const SOURCE_NAMES: Record<Source, string> = {
   push: 'pushes and PRs', green: 'green checks', judge: 'session judge', feed: 'feeding',
 }
 
+/** The buddy's skills, each grown from the EXP of the work behind it; feeding grows none. */
+const SKILLS: readonly { name: string; from: readonly Source[] }[] = [
+  { name: 'DEBUGGING', from: ['green'] },
+  { name: 'SHIPPING', from: ['commit', 'push'] },
+  { name: 'HACKING', from: ['tool'] },
+  { name: 'FOCUS', from: ['prompt', 'active'] },
+  { name: 'TINKERING', from: ['config'] },
+  { name: 'WISDOM', from: ['judge'] },
+]
+
+/** Each skill 0 to 99: the square root of its EXP, so the first sessions show and the rest takes real work. */
+export function skillStats(save: Save): { name: string; value: number }[] {
+  return SKILLS.map(({ name, from }) => {
+    const exp = from.reduce((n, src) => n + (save.expBySource[src] ?? 0), 0)
+    return { name, value: Math.min(99, Math.floor(Math.sqrt(exp))) }
+  })
+}
+
 /** The feed streak as of `today`: a run whose last feed was before yesterday is already broken. */
 function feedStreak(save: Save, today: string): number {
   const last = save.feed.lastDate
@@ -51,6 +69,7 @@ export function statsText(save: Save, today: string): string {
   return [
     `${save.nickname ? `${save.nickname} (${sp.name})` : sp.name}${save.isShiny ? ' ★' : ''}  Lv ${save.level}  ${save.personality}`,
     `${toNext}. Lifetime EXP ${save.lifetimeExp}.`,
+    'Skills:', ...skillStats(save).map(k => `  ${k.name.padEnd(9)} ${k.value}`),
     'EXP by source:', sources,
     `Bag: ${bag}`,
     `Stone progress: Thunder Stone ${c.greens % 10}/10 green checks, Fire Stone ${c.commits % 10}/10 commits, Water Stone ${c.configEdits % 10}/10 config edits, Leaf Stone ${streak % 7}/7 feed days.`,
