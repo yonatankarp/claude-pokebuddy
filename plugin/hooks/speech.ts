@@ -16,13 +16,15 @@ export function turnFacts(signals: readonly Signal[], prompts: number): string {
   if (count('pr')) parts.push(count('pr') === 1 ? '1 PR opened' : `${count('pr')} PRs opened`)
   const checks = signals.filter((s): s is Extract<Signal, { kind: 'check' }> => s.kind === 'check')
   if (checks.length) parts.push('checks: ' + checks.map(c => `${c.key} ${c.ok ? 'passed' : 'failed'}`).join(', '))
-  const configs = [...new Set(signals.flatMap(s => (s.kind === 'config' ? [s.path.split('/').pop()!] : [])))]
+  const configs = [...new Set(signals.flatMap(s => (s.kind === 'config' ? [s.name] : [])))]
   if (configs.length) parts.push('edited config: ' + configs.join(', '))
   return parts.length ? parts.join('; ') : 'a quiet turn'
 }
 
+/** The first four letters of the name's first word, so `MR. MIME` cries `Mr!`, not `Mr. !`. */
 export function cry(name: string, rand: () => number): string {
-  const base = name.charAt(0) + name.slice(1, 4).toLowerCase()
+  const word = (name.split(/\s+/).find(w => /[A-Za-z]/.test(w)) ?? name).replace(/[^A-Za-z]/g, '') || 'Pika'
+  const base = word.charAt(0).toUpperCase() + word.slice(1, 4).toLowerCase()
   const shapes = [`${base}!`, `${base} ${base.toLowerCase()}!`, `${base}...?`, `${base}~`]
   return shapes[Math.floor(rand() * shapes.length)]!
 }

@@ -4,6 +4,8 @@ export type PokemonType =
 export type Growth = 'fast' | 'medium-fast' | 'medium-slow' | 'slow'
 export type Stone = 'moon-stone' | 'fire-stone' | 'water-stone' | 'thunder-stone' | 'leaf-stone'
 export const STONES: readonly Stone[] = ['moon-stone', 'fire-stone', 'water-stone', 'thunder-stone', 'leaf-stone']
+/** A stone as the games print it: `moon-stone` is MOON STONE. */
+export const stoneName = (s: Stone) => s.replace('-', ' ').toUpperCase()
 export type Evolution =
   | { kind: 'level'; to: number; level: number }
   | { kind: 'stone'; to: number; stone: Stone }

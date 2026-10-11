@@ -1,15 +1,17 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PromptOrigin, Register, ToolCallResult } from 'claude-code'
-import { dexText, helpText, parseArgs, parseStone, statsText } from './commands'
-import { COMMAND, DENIED_MAX, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
-import { findSpecies, species } from './data/dex'
-import { applyExp, applyTurn, cancelEvolution, feed, finishEvolution, useStone, type GameEvent } from './game'
-import { judge, lineFacts, lineSession, tagLine } from './judge'
-import { localTime, readOffset } from './localtime'
+import { runCommand, type CommandIO } from './commands'
+import { DENIED_MAX, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
+import { species } from './data/dex'
+import { stoneName } from './data/types'
+import { applyExp, applyTurn, finishEvolution, type GameEvent } from './game'
+import { judge } from './judge'
+import { FINISHED_MAX, lineSession, tagLine, takeEnded } from './log'
+import { localTime } from './localtime'
 import { band, type BandView } from './render/band'
 import { signalsFromTool, type Outcome } from './signals'
 import { EXCERPT_MAX, speak, turnFacts } from './speech'
-import { exportBlob, freshSave, importBlob, parseSave, type Save } from './state'
+import { freshSave, parseSave, type Save } from './state'
 import { emptyTally, scoreTally, withoutReds, type Tally } from './tally'
 
 const saveAtom = atom({ plugin: 'pokebuddy', key: 'save' } as const, null)
@@ -18,12 +20,17 @@ const flashAtom = atom({ plugin: 'pokebuddy', key: 'flashUntil' } as const, 0)
 
 const WINDOW_MS = 10 * 60 * 1000
 const READ_ONLY = 'Your pokebuddy save is from a newer version of the mod. Update the mod; nothing was changed.'
-const CORRUPT = 'Your pokebuddy save could not be read. It was kept in save.bak. Run /buddy restore or /buddy reset confirm.'
-const CORRUPT_BAK_KEPT = 'Your pokebuddy save could not be read. Your previous backup in save.bak was kept; the damaged save was left in place. Run /buddy restore or /buddy reset confirm.'
+
+/** What to say about an unreadable save, offering only what can work with the backup slot as it now is. */
+function corruptAdvice(backup: ReturnType<typeof parseSave>['kind']): string {
+  const head = 'Your pokebuddy save could not be read.'
+  if (backup === 'ok') return `${head} The backup slot holds a good save and was kept; the damaged save was left in place. Run /buddy restore to bring the backup back, or /buddy reset confirm to start over.`
+  if (backup === 'future') return `${head} The backup slot holds a save from a newer version and was kept; the damaged save was left in place. Update the mod and run /buddy restore, or run /buddy reset confirm to start over or /buddy import <export> to load an export.`
+  return `${head} The damaged save is kept in the backup slot. Run /buddy reset confirm to start over, or /buddy import <export> to load an export.`
+}
 
 /** Why the save cannot be used this session (null when it can), and whether the person was told. */
 const blocked: { reason: string | null; isToasted: boolean } = { reason: null, isToasted: false }
-const blockedText = () => ({ text: blocked.reason ?? READ_ONLY })
 const randomSeed = () => Array.from(crypto.getRandomValues(new Uint32Array(4)))
 
 export function shouldHandleTurn(e: { agentId?: string; isAborted: boolean }): boolean {
@@ -76,10 +83,14 @@ async function loadFresh($: EngineInterface): Promise<Save | null> {
     const save = freshSave(randomSeed())
     await $.store.set('save', save)
     blocked.reason = null
+    $.ui.toast(`A wild ${species(save.species).name} appeared! Type /buddy to meet it.`)
     return save
   }
   if (parsed.kind === 'future') blocked.reason = READ_ONLY
-  else blocked.reason = (await backUp($, raw)) ? CORRUPT : CORRUPT_BAK_KEPT
+  else {
+    await backUp($, raw)
+    blocked.reason = corruptAdvice(parseSave(await $.store.get('save.bak')).kind)
+  }
   if (!blocked.isToasted) {
     blocked.isToasted = true
     $.ui.toast(blocked.reason)
@@ -99,6 +110,8 @@ async function install($: EngineInterface, incoming: Save) {
   await update($, saveAtom, () => save)
   blocked.reason = null
   blocked.isToasted = false
+  evolutionTimer.generation++
+  if (save.evolution) scheduleEvolution($)
 }
 
 /** Read fresh, change, write back, refresh the drawing copy. */
@@ -115,7 +128,7 @@ async function mutate<T>($: EngineInterface, change: (s: Save) => { save: Save; 
 async function announce($: EngineInterface, events: readonly GameEvent[], save: Save) {
   for (const ev of events) {
     if (ev.kind === 'level') $.ui.toast(`${save.nickname ?? species(save.species).name} grew to Lv ${ev.level}!`)
-    if (ev.kind === 'stone') $.ui.toast(`You found a ${ev.stone.replace('-', ' ').toUpperCase()}!`)
+    if (ev.kind === 'stone') $.ui.toast(`You found a ${stoneName(ev.stone)}!`)
     if (ev.kind === 'evolved') $.ui.toast(`Congratulations! ${species(ev.from).name} evolved into ${species(ev.to).name}!`)
     if (ev.kind === 'max') $.ui.toast('Level 100!')
   }
@@ -124,16 +137,44 @@ async function announce($: EngineInterface, events: readonly GameEvent[], save: 
     await update($, flashAtom, () => now + FLASH_MS)
     $.clock.after(FLASH_MS + 50, () => $.ui.invalidate('ui.render'))
   }
-  if (events.some(e => e.kind === 'evolving')) {
-    $.clock.after(EVOLVE_MS, () => mutate($, s => finishEvolution(s)))
-  }
+  if (events.some(e => e.kind === 'evolving')) scheduleEvolution($)
+}
+
+/** Which evolution timer is current: a stop, a new evolution or an install makes older timers do nothing. */
+const evolutionTimer = { generation: 0 }
+
+/** Finishes the save's evolution after the window, unless it was stopped or replaced before then. */
+function scheduleEvolution($: EngineInterface) {
+  const generation = ++evolutionTimer.generation
+  $.clock.after(EVOLVE_MS, async () => {
+    if (generation === evolutionTimer.generation) await mutate($, s => finishEvolution(s))
+  })
 }
 
 /** The loader follows `$` only into this file, so the pure modules get a client that spells each call out. */
 function clients($: EngineInterface) {
   return {
-    process: { run: (...a: Parameters<EngineInterface['process']['run']>) => $.process.run(...a) },
     model: { complete: (...a: Parameters<EngineInterface['model']['complete']>) => $.model.complete(...a) },
+  }
+}
+
+/** The engine calls the command handlers make, spelled out here where the loader follows `$`. */
+function commandIO($: EngineInterface, isInteractive: boolean): CommandIO {
+  return {
+    isInteractive,
+    now: () => $.clock.now(),
+    load: () => loadFresh($),
+    show: async save => { await update($, saveAtom, () => save) },
+    mutate: change => mutate($, change),
+    blockedText: () => blocked.reason ?? READ_ONLY,
+    readRaw: key => $.store.get(key),
+    writeRaw: (key, value) => $.store.set(key, value as never),
+    backUp: raw => backUp($, raw),
+    install: save => install($, save),
+    quietBubble: async () => { await update($, bubbleAtom, () => null) },
+    copy: async text => (await $.ui.copy({ text })).isCopied,
+    evolutionStopped: () => { evolutionTimer.generation++ },
+    randomSeed,
   }
 }
 
@@ -153,7 +194,6 @@ export const register: Register = (on, options) => {
   let turnPrompt: string | null = null
   let tally: Tally = emptyTally()
   let lastWindow = -1
-  let offset: number | null = null
   // Until a session.start says otherwise (a reload may not raise one), assume a person is there.
   let isInteractive = true
 
@@ -161,19 +201,19 @@ export const register: Register = (on, options) => {
     blocked.isToasted = false
     isInteractive = e.isInteractive
     await $.command.register({ name: 'buddy', description: 'Your Gen 1 Pokémon buddy: stats, dex, feed, evolve' })
-    offset = await readOffset(clients($))
     // A reload or exit inside the evolution window drops its timer; finish it now.
     const loaded = await mutate($, s => (s.evolution ? finishEvolution(s) : { save: s }))
     if (!isInteractive) return next(e)
-    // Take the finished sessions' lines first, then score them, so no other session judges them again.
-    // This session's own lines stay for the session after it. Quiet means no model calls: they are dropped.
+    // Take the ended sessions' lines first, then score them, so no other session judges them again.
+    // A running session's lines stay, this one's included. Quiet means no model calls: they are dropped.
     const sid = await $.session.id()
+    const now = await $.clock.now()
     let taken: string[] = []
-    if (loaded && loaded.save.pendingLog.some(l => lineSession(l) !== sid)) {
+    if (loaded && (loaded.save.finishedSessions.length > 0 || takeEnded(loaded.save.pendingLog, [], sid, now).taken.length > 0)) {
       await mutate($, s => {
-        const finished = s.pendingLog.filter(l => lineSession(l) !== sid)
-        if (s.speechOn) taken = finished.map(lineFacts)
-        return { save: { ...s, pendingLog: s.pendingLog.filter(l => lineSession(l) === sid) } }
+        const ended = takeEnded(s.pendingLog, s.finishedSessions, sid, now)
+        if (s.speechOn) taken = ended.taken
+        return { save: { ...s, pendingLog: ended.log, finishedSessions: [] } }
       })
     }
     if (taken.length > 0) {
@@ -187,14 +227,32 @@ export const register: Register = (on, options) => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
+  // Marks the ending session's lines for the next session start to judge: one store write, well inside
+  // session.end's short bound, and only when this session logged a turn.
+  on('session.end', async ($, e, next) => {
+    if (isInteractive) {
+      const cur = parseSave(await $.store.get('save'))
+      if (cur.kind === 'ok' && !cur.save.finishedSessions.includes(e.sessionId) && cur.save.pendingLog.some(l => lineSession(l) === e.sessionId)) {
+        await $.store.set('save', { ...cur.save, finishedSessions: [...cur.save.finishedSessions, e.sessionId].slice(-FINISHED_MAX) })
+      }
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   on('prompt.submit', async ($, e, next) => {
     if (countsAsPrompt(e)) {
       tally.prompts++
-      turnPrompt = e.text.slice(0, EXCERPT_MAX)
+      // The turn's first prompt: one typed while the turn runs waits in the queue and is not this turn's.
+      turnPrompt ??= e.text.slice(0, EXCERPT_MAX)
       const window = Math.floor((await $.clock.now()) / WINDOW_MS)
       if (window !== lastWindow) { tally.activeWindows++; lastWindow = window }
     }
-    return next(e)
+    const result = await next(e)
+    // Another session may have written the save since this one last did: draw what is stored. After
+    // next, so the prompt never waits on the read.
+    const stored = parseSave(await $.store.get('save'))
+    if (stored.kind === 'ok') await update($, saveAtom, () => stored.save)
+    return result
   }).catch(($, e, next) => next(e))
 
   on('tool.check', async ($, e, next) => {
@@ -206,7 +264,7 @@ export const register: Register = (on, options) => {
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     try {
-      tally.signals.push(...signalsFromTool(String(e.tool), e as unknown as Record<string, unknown>, outcome(ran, e.tool_use_id)))
+      tally.signals.push(...signalsFromTool(String(e.tool), e as unknown as Record<string, unknown>, outcome(ran, e.tool_use_id), ran.text ?? ''))
     } catch {}
     return ran
   }).catch(($, e, next) => next(e))
@@ -221,123 +279,33 @@ export const register: Register = (on, options) => {
     // A headless run (-p, the SDK) has no one watching: no EXP, no log line, no speech.
     if (!isInteractive) return result
     const sid = await $.session.id()
-    const local = localTime(await $.clock.now(), offset)
+    const now = await $.clock.now()
+    const local = localTime(now)
     const facts = turnFacts(turn.signals, turn.prompts)
     const r = await mutate($, s => {
       const applied = applyTurn(s, scoreTally(turn, s.checks), local)
-      return { ...applied, save: { ...applied.save, pendingLog: [...applied.save.pendingLog, tagLine(sid, facts)].slice(-PENDING_LOG_MAX) } }
+      // A session resumed under an id that had ended is running again: its lines wait for its next end.
+      const finishedSessions = applied.save.finishedSessions.filter(id => id !== sid)
+      return { ...applied, save: { ...applied.save, finishedSessions, pendingLog: [...applied.save.pendingLog, tagLine(sid, now, facts)].slice(-PENDING_LOG_MAX) } }
     })
     if (r?.save.speechOn) {
       const save = r.save
       $.clock.after(0, async () => {
+        if (!(await read($, saveAtom))?.speechOn) return
         const line = await speak(clients($), model, save, facts, talk)
-        await update($, bubbleAtom, () => line)
+        // A /buddy quiet while the model answered wins: the line is dropped.
+        if ((await read($, saveAtom))?.speechOn) await update($, bubbleAtom, () => line)
       })
     }
     return result
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'buddy' }, async ($, e) => {
-    const { sub, rest } = parseArgs(e.args)
-    if (sub === 'help') return { text: helpText(COMMAND) }
-    if (sub === 'dex' && rest) {
-      const s = findSpecies(rest)
-      return { text: s ? dexText(s, false) : `No Gen 1 Pokémon called "${rest}".` }
-    }
-    const local = localTime(await $.clock.now(), offset)
-    switch (sub) {
-      case 'stats': {
-        const s = await loadFresh($)
-        if (s) await update($, saveAtom, () => s)
-        return s ? { text: statsText(s) } : blockedText()
-      }
-      case 'dex': {
-        const s = await loadFresh($)
-        return s ? { text: dexText(species(s.species), true) } : blockedText()
-      }
-      case 'feed': {
-        const r = await mutate($, s => feed(s, local))
-        if (!r) return blockedText()
-        const name = species(r.save.species).name
-        if (!r.fed) return { text: `${name} has already eaten today. Come back tomorrow.` }
-        const days = r.save.counters.feedRun
-        return { text: `You fed ${name} a Rare Candy. +${r.gained} EXP. Streak: ${days} day${days === 1 ? '' : 's'}.` }
-      }
-      case 'use': {
-        const stone = parseStone(rest)
-        if (!stone) return { text: 'Which stone? moon, fire, water, thunder or leaf.' }
-        let from = 0
-        const r = await mutate($, s => { from = s.species; return useStone(s, stone) })
-        if (!r) return blockedText()
-        if (r.error) return { text: r.error }
-        return { text: `${species(from).name} evolved into ${species(r.save.species).name}!` }
-      }
-      case 'stop': {
-        const r = await mutate($, s => cancelEvolution(s))
-        if (!r) return blockedText()
-        return { text: r.cancelled ? `Huh? ${species(r.save.species).name} stopped evolving!` : 'Nothing is evolving right now.' }
-      }
-      case 'toggle': {
-        const r = await mutate($, s => ({ save: { ...s, view: s.view === 'full' ? 'compact' as const : 'full' as const } }))
-        return r ? { text: `Showing the ${r.save.view} view.` } : blockedText()
-      }
-      case 'quiet': {
-        const r = await mutate($, s => ({ save: { ...s, speechOn: !s.speechOn } }))
-        if (!r) return blockedText()
-        if (!r.save.speechOn) await update($, bubbleAtom, () => null)
-        return { text: r.save.speechOn ? 'Speech is on.' : 'Speech is off. No model calls are made: no reactions and no session judge.' }
-      }
-      case 'nickname': {
-        const nickname = rest.trim().slice(0, 12) || null
-        const r = await mutate($, s => ({ save: { ...s, nickname } }))
-        if (!r) return blockedText()
-        return { text: nickname ? `Nickname set to ${nickname}.` : 'Nickname cleared.' }
-      }
-      case 'export': {
-        const s = await loadFresh($)
-        if (!s) return blockedText()
-        const blob = exportBlob(s)
-        const copied = await $.ui.copy({ text: blob })
-        return { text: copied.isCopied ? 'Save copied to the clipboard.' : `Copy this save:\n${blob}` }
-      }
-      case 'import': {
-        const parsed = importBlob(rest)
-        if (parsed.kind === 'bad') return { text: parsed.reason }
-        const kept = await backUp($, await $.store.get('save'))
-        await install($, parsed.save)
-        return { text: `Restored ${species(parsed.save.species).name} at Lv ${parsed.save.level}.${kept ? ' Your previous save is in save.bak.' : ''}` }
-      }
-      case 'restore': {
-        const bak = parseSave(await $.store.get('save.bak'))
-        if (bak.kind !== 'ok') return { text: 'save.bak does not hold a save this version can read. Nothing was changed.' }
-        const current = await $.store.get('save')
-        if (current !== undefined) await $.store.set('save.bak', current as never)
-        await install($, bak.save)
-        return { text: `Restored ${species(bak.save.species).name} at Lv ${bak.save.level} from save.bak. The save it replaced is now in save.bak.` }
-      }
-      case 'reset': {
-        // Read only: an unconfirmed reset writes nothing, not even the fresh roll or the backup loadFresh makes.
-        const raw = await $.store.get('save')
-        const cur = parseSave(raw)
-        if (rest.trim().toLowerCase() !== 'confirm') {
-          const what = cur.kind === 'ok' ? `${cur.save.nickname ?? species(cur.save.species).name} (Lv ${cur.save.level})` : 'the current save'
-          return { text: `This rolls a new Pokémon at Lv 5 and moves ${what} to save.bak. It works once a day. Run /buddy reset confirm to go ahead.` }
-        }
-        if (cur.kind === 'ok' && cur.save.lastResetDate !== null && cur.save.lastResetDate >= local.date) {
-          return { text: 'You already reset today. Reset works once a day; nothing was changed.' }
-        }
-        const kept = await backUp($, raw)
-        const save = freshSave(randomSeed(), local.date)
-        await install($, save)
-        return { text: `A wild ${species(save.species).name} appeared at Lv ${save.level}! ${kept ? 'Your previous save is in save.bak.' : 'save.bak keeps the backup it already had.'}` }
-      }
-    }
-  })
+  on('command.run', { command: 'buddy' }, async ($, e) => ({ text: await runCommand(commandIO($, isInteractive), e.args) }))
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const view = await drawView($)
     if (!view) return next(e)
-    return band($.ui.resolve(e), view, e.props.maxRows, e.props.bodyColumns)
+    return band($.ui.resolve(e), view, e.props.maxRows, e.props.bodyColumns, e.viewport?.isFullscreen === true)
   })
 }

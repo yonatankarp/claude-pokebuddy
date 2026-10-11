@@ -23,6 +23,13 @@ describe('game', () => {
     expect(done.save.species).toBe(5)
     expect(done.events).toEqual([{ kind: 'evolved', from: 4, to: 5 }])
   })
+  test('finishing an evolution past the next one\'s level starts that one too', () => {
+    const r = finishEvolution(as(10, 11, { evolution: { to: 11 } })) // Caterpie at Lv 11: Metapod, then Butterfree at 10
+    expect(r.save.species).toBe(11)
+    expect(r.save.evolution).toEqual({ to: 12 })
+    expect(r.events).toEqual([{ kind: 'evolved', from: 10, to: 11 }, { kind: 'evolving', from: 11, to: 12 }])
+    expect(finishEvolution(r.save).save).toMatchObject({ species: 12, evolution: null })
+  })
   test('cancel holds for this level and retries at the next', () => {
     const r = applyExp(as(4, 15), { commit: 10000 })
     const c = cancelEvolution(r.save)
@@ -105,6 +112,10 @@ describe('game', () => {
     expect(r.error).toBe('You have no FIRE STONE.')
     expect(r.save.species).toBe(133)
   })
+  test('a feed date after today (a clock moved back) does not feed again', () => {
+    const s = as(25, 10, { feed: { lastDate: '2026-10-12' } })
+    expect(feed(s, day).fed).toBe(false)
+  })
   test('feed streak continues across month and year boundaries', () => {
     const a = feed(as(1, 10, { feed: { lastDate: '2026-12-31' }, counters: { greens: 0, commits: 0, configEdits: 0, feedRun: 1 } }), { date: '2027-01-01', hour: 9 })
     expect(a.save.counters.feedRun).toBe(2)
@@ -115,10 +126,9 @@ describe('game', () => {
     expect(previousDate('2026-03-01')).toBe('2026-02-28')
     expect(previousDate('2026-01-01')).toBe('2025-12-31')
   })
-  test('localTime with an offset', () => {
-    const t = Date.UTC(2026, 9, 11, 23, 30)
-    expect(localTime(t, 120)).toEqual({ date: '2026-10-12', hour: 1 })
-    expect(localTime(t, -300)).toEqual({ date: '2026-10-11', hour: 18 })
+  test('localTime is the sandbox\'s own day and hour', () => {
+    expect(localTime(new Date(2026, 9, 11, 23, 30).getTime())).toEqual({ date: '2026-10-11', hour: 23 })
+    expect(localTime(new Date(2026, 0, 1, 0, 5).getTime())).toEqual({ date: '2026-01-01', hour: 0 })
   })
 })
 

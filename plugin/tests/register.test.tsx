@@ -10,6 +10,8 @@ const usage = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 
 let toasts: string[] = []
 let modelCalls: string[] = []
 let modelReply = '42'
+/** Runs while the model answers, before the reply comes back. */
+let whileModelAnswers: (() => Promise<unknown>) | null = null
 
 const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
 
@@ -26,8 +28,10 @@ function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
   on('store.set', async (_$, e) => { store.set(e.key, copy(e.value)); return { value: undefined } })
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('session.id', async () => ({ value: sid }))
+  on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
   on('model.complete', async (_$, e) => {
     modelCalls.push(e.prompt)
+    await whileModelAnswers?.()
     return { value: { isAnswered: true as const, text: modelReply, usage } }
   })
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
@@ -46,7 +50,8 @@ function loop(on: On) {
   on('turn.complete', async (_$, e) => ({ text: e.answer }))
 }
 
-const NOON = Date.UTC(2026, 9, 11, 12)
+// Local noon, so the day and the hour (the Moon Stone is before 5) are the same in every time zone.
+const NOON = new Date(2026, 9, 11, 12).getTime()
 const prompt = ($: Engine, text = 'fix it') => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
 const bash = ($: Engine, command: string) => $.tool.call({ tool: 'Bash', command })
 const endTurn = ($: Engine, agentId?: string) =>
@@ -60,15 +65,18 @@ const run = (args: string) => ({
 
 /** The kit does not start a session on its own: raise `session.start` as a session opening does. */
 const start = ($: Engine, isInteractive = true) => $.session.start({ cwd: '/', surface: isInteractive ? 'terminal' : null, isInteractive })
+const end = ($: Engine, sessionId = 'S1') => $.session.end({ reason: 'prompt_input_exit', sessionId, resume: { id: sessionId } })
+const HOUR = 60 * 60 * 1000
 
 describe('register', () => {
   test('first session rolls and stores a save', async ($, on) => {
     const store = world(on)
-    mock.clock(on, { now: Date.UTC(2026, 9, 11, 12) })
+    mock.clock(on, { now: NOON })
     await start($)
     await $.command.run(run('stats'))
-    const save = store.get('save') as { level: number } | undefined
+    const save = store.get('save') as { level: number; species: number } | undefined
     expect(save?.level).toBe(5)
+    expect(toasts).toEqual([`A wild ${species(save!.species).name} appeared! Type /buddy to meet it.`])
   })
 
   test('a future-version save is left untouched and commands say read-only', async ($, on) => {
@@ -98,7 +106,8 @@ describe('register', () => {
     expect(store.get('save')).toBe('garbage')
     expect(store.get('save.bak')).toBe('garbage')
     expect(r.text).toMatch(/could not be read/)
-    expect(toasts.filter(t => /could not be read.*save\.bak.*\/buddy restore.*\/buddy reset/.test(t))).toHaveLength(1)
+    expect(toasts.filter(t => /could not be read.*kept in the backup slot.*\/buddy reset confirm.*\/buddy import/.test(t))).toHaveLength(1)
+    expect(toasts.join()).not.toMatch(/restore|save\.bak/)
   })
 
   test('a corrupt save never overwrites a valid backup', async ($, on) => {
@@ -109,9 +118,40 @@ describe('register', () => {
     await $.command.run(run('stats'))
     expect(store.get('save.bak')).toEqual(good)
     expect(toasts).toHaveLength(1)
-    expect(toasts[0]).toMatch(/previous backup in save\.bak was kept; the damaged save was left in place/)
-    expect(toasts[0]).not.toMatch(/It was kept in save\.bak/)
-    expect(toasts[0]).toMatch(/\/buddy restore or \/buddy reset/)
+    expect(toasts[0]).toMatch(/backup slot holds a good save and was kept; the damaged save was left in place/)
+    expect(toasts[0]).toMatch(/\/buddy restore.*\/buddy reset confirm/)
+  })
+
+  test('a corrupt save with no backup: the advice it gives works', async ($, on) => {
+    const store = world(on, { save: 'garbage' })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect(toasts[0]).toMatch(/\/buddy reset confirm/)
+    expect((await $.command.run(run('restore'))).text).toMatch(/does not hold/)
+    expect((await $.command.run(run(`import ${exportBlob(freshSave([7, 7, 7, 7]))}`))).text).toMatch(/Restored/)
+    expect((await $.command.run(run('stats'))).text).not.toMatch(/could not be read/)
+    store.set('save', 'garbage again')
+    expect((await $.command.run(run('reset confirm'))).text).toMatch(/appeared/)
+    expect((await $.command.run(run('feed'))).text).toMatch(/Rare Candy/)
+  })
+
+  test('a corrupt save with a newer-version backup offers no restore that cannot work', async ($, on) => {
+    const store = world(on, { save: 'garbage', 'save.bak': { version: 99 } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect(toasts[0]).toMatch(/newer version.*Update the mod.*\/buddy reset confirm/)
+    expect(store.get('save.bak')).toEqual({ version: 99 })
+    expect((await $.command.run(run('reset confirm'))).text).toMatch(/appeared/)
+  })
+
+  test('a corrupt save with a good backup: restore, as advised, works', async ($, on) => {
+    const good = freshSave([9, 9, 9, 9])
+    world(on, { save: 'garbage', 'save.bak': good })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect(toasts[0]).toMatch(/\/buddy restore/)
+    expect((await $.command.run(run('restore'))).text).toMatch(/Restored/)
+    expect((await $.command.run(run('feed'))).text).toMatch(/Rare Candy/)
   })
 
   test('restore swaps a valid backup in and keeps the current raw as save.bak', async ($, on) => {
@@ -132,7 +172,7 @@ describe('register', () => {
     mock.clock(on)
     await start($)
     const r = await $.command.run(run('restore'))
-    expect(r.text).toMatch(/save\.bak/)
+    expect(r.text).toMatch(/backup slot does not hold/)
     expect(store.get('save')).toBe('garbage')
   })
 
@@ -144,7 +184,7 @@ describe('register', () => {
     const r = await $.command.run(run('reset confirm'))
     expect(store.get('save.bak')).toEqual(good)
     expect((store.get('save') as { version: number }).version).toBe(1)
-    expect(r.text).toMatch(/save\.bak keeps the backup/)
+    expect(r.text).toMatch(/backup slot keeps the backup/)
   })
 
   test('reset rolls a fresh save and backs up the current one', async ($, on) => {
@@ -153,7 +193,7 @@ describe('register', () => {
     mock.clock(on)
     await start($)
     const r = await $.command.run(run('reset confirm'))
-    expect(r.text).toMatch(/save\.bak/)
+    expect(r.text).toMatch(/previous save is in the backup slot/)
     expect(store.get('save.bak')).toEqual(s)
     const fresh = store.get('save') as { version: number; seed: number[] }
     expect(fresh.version).toBe(1)
@@ -233,7 +273,7 @@ describe('register', () => {
 
   test('feed once a day through the command', async ($, on) => {
     const store = world(on, { save: freshSave([1, 2, 3, 4]) })
-    mock.clock(on, { now: Date.UTC(2026, 9, 11, 12) })
+    mock.clock(on, { now: NOON })
     await start($)
     const first = await $.command.run(run('feed'))
     expect(first.text).toMatch(/Rare Candy/)
@@ -254,7 +294,7 @@ describe('register', () => {
   test('a change another session wrote to the store survives this session\'s next command', async ($, on) => {
     const s = freshSave([1, 2, 3, 4])
     const store = world(on, { save: s })
-    mock.clock(on, { now: Date.UTC(2026, 9, 11, 12) })
+    mock.clock(on, { now: NOON })
     await start($)
     await $.command.run(run('stats'))
     store.set('save', { ...s, nickname: 'Other', lifetimeExp: 999 })
@@ -306,6 +346,18 @@ describe('register', () => {
     expect(after.counters.commits).toBe(1)
   })
 
+  test('a chain of commits in one turn counts three', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    mock.clock(on, { now: NOON })
+    await start($)
+    await bash($, Array.from({ length: 6 }, (_, i) => `git commit -m c${i}`).join(' && '))
+    await endTurn($)
+    const after = store.get('save') as Stored
+    expect(after.expBySource.commit).toBe(90)
+    expect(after.counters.commits).toBe(3)
+  })
+
   test('a Bash commit that fails (isError) earns no commit EXP', async ($, on) => {
     const store = world(on, { save: freshSave([1, 2, 3, 4]) })
     loop(on)
@@ -333,6 +385,45 @@ describe('register', () => {
     const after = store.get('save') as Stored
     expect(after.species).toBe(5)
     expect(after.evolution).toBe(null)
+  })
+
+  const charmander = (level: number, extra: Record<string, unknown> = {}) =>
+    ({ ...freshSave([1, 2, 3, 4]), species: 4, level, exp: expForLevel(species(4).growth, level), ...extra })
+
+  test('an evolution stopped and restarted is finished by its own timer, not the stopped one', async ($, on) => {
+    const store = world(on, { save: { ...charmander(15), exp: expForLevel(species(4).growth, 16) - 1 } })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await prompt($)
+    await endTurn($)
+    await clock.advance(1000)
+    expect((await $.command.run(run('stop'))).text).toMatch(/stopped evolving/)
+    await $.command.run(run('feed'))
+    expect((store.get('save') as Stored)).toMatchObject({ level: 17, evolution: { to: 5 } })
+    await clock.advance(EVOLVE_MS - 1000)
+    expect((store.get('save') as Stored)).toMatchObject({ species: 4, evolution: { to: 5 } })
+    await clock.advance(1000)
+    expect((store.get('save') as Stored)).toMatchObject({ species: 5, evolution: null })
+  })
+
+  test('an imported save that is mid-evolution finishes it', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await $.command.run(run(`import ${exportBlob(charmander(16, { evolution: { to: 5 } }) as ReturnType<typeof freshSave>)}`))
+    expect((store.get('save') as Stored).evolution).toEqual({ to: 5 })
+    await clock.advance(EVOLVE_MS)
+    expect((store.get('save') as Stored)).toMatchObject({ species: 5, evolution: null })
+  })
+
+  test('a save that jumped past two evolutions evolves twice', async ($, on) => {
+    const store = world(on, { save: { ...freshSave([1, 2, 3, 4]), species: 10, level: 11, exp: expForLevel(species(10).growth, 11), evolution: { to: 11 } } })
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    expect((store.get('save') as Stored)).toMatchObject({ species: 11, evolution: { to: 12 } })
+    await clock.advance(EVOLVE_MS)
+    expect((store.get('save') as Stored)).toMatchObject({ species: 12, evolution: null })
   })
 
   /** A loop where the calls named in `failing` fail, and the permission check denies those in `denied`. */
@@ -465,11 +556,11 @@ describe('register', () => {
     await start($)
     await prompt($)
     await endTurn($)
-    expect((store.get('save') as Stored).pendingLog).toEqual(['S1\t1 prompt'])
+    expect((store.get('save') as Stored).pendingLog).toEqual([`S1\t${NOON}\t1 prompt`])
   })
 
   test('session start judges other sessions\' lines once and keeps its own', async ($, on) => {
-    const s = { ...freshSave([1, 2, 3, 4]), pendingLog: ['OLD\t1 commit', 'plain line', 'S1\t1 prompt'] }
+    const s = { ...freshSave([1, 2, 3, 4]), pendingLog: ['OLD\t1 commit', '1 push', 'S1\t1 prompt'] }
     const store = world(on, { save: s })
     const clock = mock.clock(on, { now: NOON })
     await start($)
@@ -479,12 +570,85 @@ describe('register', () => {
     expect(after.expBySource.judge).toBe(42)
     expect(modelCalls).toHaveLength(1)
     expect(modelCalls[0]).toContain('- 1 commit')
-    expect(modelCalls[0]).toContain('- plain line')
+    expect(modelCalls[0]).toContain('- 1 push')
     expect(modelCalls[0]).not.toContain('1 prompt')
     await start($)
     await clock.advance(1)
     expect(modelCalls).toHaveLength(1)
     expect((store.get('save') as Stored).expBySource.judge).toBe(42)
+  })
+
+  test('session start leaves a running session\'s lines alone', async ($, on) => {
+    const s = { ...freshSave([1, 2, 3, 4]), pendingLog: [`LIVE\t${NOON - HOUR}\t1 commit`] }
+    const store = world(on, { save: s })
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(0)
+    expect((store.get('save') as Stored).pendingLog).toEqual(s.pendingLog)
+  })
+
+  test('session end marks the session ended, and the next start judges it once', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await prompt($)
+    await endTurn($)
+    await clock.advance(1)
+    await end($)
+    expect((store.get('save') as { finishedSessions: string[] }).finishedSessions).toEqual(['S1'])
+    modelCalls = []
+    const saved = store.get('save') as Stored & { finishedSessions: string[] }
+    store.set('save', { ...saved, finishedSessions: ['A'], pendingLog: [`A\t${NOON}\t1 commit`, `B\t${NOON}\t1 push`] })
+    await start($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(1)
+    expect(modelCalls[0]).toContain('- 1 commit')
+    expect(modelCalls[0]).not.toContain('1 push')
+    const after = store.get('save') as Stored & { finishedSessions: string[] }
+    expect(after.pendingLog).toEqual([`B\t${NOON}\t1 push`])
+    expect(after.finishedSessions).toEqual([])
+  })
+
+  test('session end without a logged turn writes nothing', async ($, on) => {
+    const s = freshSave([1, 2, 3, 4])
+    const store = world(on, { save: s })
+    mock.clock(on, { now: NOON })
+    await start($)
+    const before = copy(store.get('save'))
+    await end($)
+    expect(store.get('save')).toEqual(before)
+  })
+
+  test('a session that never ended is judged once its last line is a day old', async ($, on) => {
+    const s = { ...freshSave([1, 2, 3, 4]), pendingLog: [`GONE\t${NOON - 30 * HOUR}\t1 commit`, `GONE\t${NOON - 23 * HOUR}\t1 push`] }
+    const store = world(on, { save: s })
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(0)
+    await clock.advance(2 * HOUR)
+    await start($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(1)
+    expect(modelCalls[0]).toContain('- 1 commit')
+    expect(modelCalls[0]).toContain('- 1 push')
+    expect((store.get('save') as Stored).pendingLog).toEqual([])
+  })
+
+  test('a resumed session that had ended is running again', async ($, on) => {
+    const store = world(on, { save: { ...freshSave([1, 2, 3, 4]), finishedSessions: ['S1'], pendingLog: [`S1\t${NOON}\t1 commit`] } })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(0)
+    await prompt($)
+    await endTurn($)
+    const after = store.get('save') as Stored & { finishedSessions: string[] }
+    expect(after.finishedSessions).toEqual([])
+    expect(after.pendingLog).toHaveLength(2)
   })
 
   test('a reload of the same session judges nothing', async ($, on) => {
@@ -507,7 +671,7 @@ describe('register', () => {
     await endTurn($)
     await clock.advance(1)
     expect(modelCalls).toHaveLength(0)
-    expect((store.get('save') as Stored).pendingLog).toEqual(['S1\t1 prompt'])
+    expect((store.get('save') as Stored).pendingLog).toEqual([`S1\t${NOON}\t1 prompt`])
   })
 
   test('a headless run earns nothing, speaks not and leaves the log alone', async ($, on) => {
@@ -522,6 +686,166 @@ describe('register', () => {
     await clock.advance(1)
     expect(modelCalls).toHaveLength(0)
     expect(store.get('save')).toEqual(s)
+  })
+
+  test('a headless /buddy feed earns nothing', async ($, on) => {
+    const s = freshSave([1, 2, 3, 4])
+    const store = world(on, { save: s })
+    mock.clock(on, { now: NOON })
+    await start($, false)
+    expect((await $.command.run(run('feed'))).text).toMatch(/needs you at the terminal/)
+    expect(store.get('save')).toEqual(s)
+  })
+
+  test('feeding at Lv 100 says there is no EXP to gain', async ($, on) => {
+    const growth = species(25).growth
+    world(on, { save: { ...freshSave([1, 2, 3, 4]), species: 25, level: 100, exp: expForLevel(growth, 100) } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    const r = await $.command.run(run('feed'))
+    expect(r.text).toMatch(/already at Lv 100/)
+    expect(r.text).not.toMatch(/\+0 EXP/)
+  })
+
+  test('a nickname is cut at 12 characters without splitting an emoji', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    mock.clock(on, { now: NOON })
+    await start($)
+    await $.command.run(run(`nickname ${'🔥'.repeat(14)}`))
+    expect((store.get('save') as { nickname: string }).nickname).toBe('🔥'.repeat(12))
+    expect((await $.command.run(run('stats'))).text).not.toMatch(/could not be read/)
+  })
+
+  test('a /buddy quiet while the model answers keeps the bubble away', async ($, on) => {
+    world(on, { save: pika() })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    try {
+      await start($)
+      modelReply = 'Pika, too late'
+      await prompt($)
+      await endTurn($)
+      await $.command.run(run('quiet'))
+      await clock.advance(1)
+      const ui = await band($)
+      expect(await ui.find({ type: 'Text', text: /too late/ })).toBeUndefined()
+      await ui.unmount()
+    } finally {
+      modelReply = '42'
+    }
+  })
+
+  test('a /buddy quiet that lands while the model is answering drops the line', async ($, on) => {
+    world(on, { save: pika() })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    try {
+      await start($)
+      modelReply = 'Pika, mid-air'
+      whileModelAnswers = () => $.command.run(run('quiet'))
+      await prompt($)
+      await endTurn($)
+      await clock.advance(1)
+      expect(modelCalls).toHaveLength(1)
+      const ui = await band($)
+      expect(await ui.find({ type: 'Text', text: /mid-air/ })).toBeUndefined()
+      await ui.unmount()
+    } finally {
+      modelReply = '42'
+      whileModelAnswers = null
+    }
+  })
+
+  test('speech hears the turn\'s first prompt, not one queued while it ran', async ($, on) => {
+    world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await prompt($, 'the first ask')
+    await prompt($, 'a queued ask')
+    await endTurn($)
+    await clock.advance(1)
+    expect(modelCalls[0]).toContain('the first ask')
+    expect(modelCalls[0]).not.toContain('a queued ask')
+  })
+
+  test('a prompt draws the save another session wrote', async ($, on) => {
+    const s = pika()
+    const store = world(on, { save: s })
+    loop(on)
+    mock.clock(on, { now: NOON })
+    await start($)
+    store.set('save', { ...s, nickname: 'Elsewhere' })
+    await prompt($)
+    const ui = await band($)
+    expect(await ui.find({ type: 'Text', text: /Elsewhere/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('help, and anything it does not know, lists the commands', async ($, on) => {
+    world(on, { save: freshSave([1, 2, 3, 4]) })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('help'))).text).toMatch(/\/buddy feed/)
+    expect((await $.command.run(run('dance'))).text).toMatch(/\/buddy stats/)
+    expect((await $.command.run(run('dex 25'))).text).toMatch(/#025 PIKACHU/)
+    expect((await $.command.run(run('dex nothing'))).text).toMatch(/No Gen 1 Pokémon/)
+  })
+
+  test('use: a stone the bag lacks, one the species cannot use, and one that evolves it', async ($, on) => {
+    const store = world(on, { save: { ...pika(), bag: { 'thunder-stone': 1, 'fire-stone': 1 } } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('use'))).text).toMatch(/Which stone/)
+    expect((await $.command.run(run('use moon'))).text).toMatch(/You have no MOON STONE/)
+    expect((await $.command.run(run('use fire'))).text).toMatch(/cannot use a FIRE STONE/)
+    expect((await $.command.run(run('use thunder stone'))).text).toBe('PIKACHU evolved into RAICHU!')
+    expect(store.get('save') as Stored & { bag: Record<string, number> }).toMatchObject({ species: 26, bag: { 'thunder-stone': 0, 'fire-stone': 1 } })
+  })
+
+  test('stop with nothing evolving, toggle and quiet', async ($, on) => {
+    const store = world(on, { save: pika() })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('stop'))).text).toBe('Nothing is evolving right now.')
+    expect((await $.command.run(run('toggle'))).text).toBe('Showing the compact view.')
+    expect((await $.command.run(run('toggle'))).text).toBe('Showing the full view.')
+    expect((await $.command.run(run('quiet'))).text).toMatch(/Speech is off/)
+    expect((store.get('save') as { speechOn: boolean }).speechOn).toBe(false)
+    expect((await $.command.run(run('quiet'))).text).toBe('Speech is on.')
+  })
+
+  test('nickname sets and clears', async ($, on) => {
+    const store = world(on, { save: pika() })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('nickname Sparky'))).text).toBe('Nickname set to Sparky.')
+    expect((store.get('save') as { nickname: string | null }).nickname).toBe('Sparky')
+    expect((await $.command.run(run('nickname'))).text).toBe('Nickname cleared.')
+    expect((store.get('save') as { nickname: string | null }).nickname).toBe(null)
+  })
+
+  test('import refuses a bad blob and changes nothing', async ($, on) => {
+    const s = pika()
+    const store = world(on, { save: s })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('import hello'))).text).toMatch(/not a pokebuddy export|damaged/)
+    expect((await $.command.run(run(`import ${exportBlob(s).slice(0, -8)}`))).text).toMatch(/damaged/)
+    expect(store.get('save')).toEqual(s)
+    expect(store.has('save.bak')).toBe(false)
+  })
+
+  test('export copies the save, or prints it when the copy fails', async ($, on) => {
+    const s = pika()
+    world(on, { save: s })
+    let isCopied = true
+    on('ui.copy', async () => ({ value: isCopied ? { isCopied: true as const } : { isCopied: false as const, reason: 'no-clipboard' as const } }))
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('export'))).text).toBe('Save copied to the clipboard.')
+    isCopied = false
+    expect((await $.command.run(run('export'))).text).toBe(`Copy this save:\n${exportBlob(s)}`)
   })
 
   test('only main-loop turns are handled', () => {

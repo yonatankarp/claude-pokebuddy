@@ -1,5 +1,5 @@
 import { species } from './data/dex'
-import type { Stone } from './data/types'
+import { stoneName, type Stone } from './data/types'
 import { levelEvolution, stoneEvolution, stonesEarned, tradeEvolution, type Counters } from './evolution'
 import { expForLevel, levelForExp, MAX_LEVEL } from './exp'
 import { previousDate, type LocalTime } from './localtime'
@@ -14,7 +14,6 @@ export type GameEvent =
   | { kind: 'max' }
 
 type Result = { save: Save; events: GameEvent[] }
-const stoneName = (s: Stone) => s.replace('-', ' ').toUpperCase()
 
 export function applyExp(save: Save, gained: Partial<Record<Source, number>>): Result {
   const clean = (n: number | undefined) => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0)
@@ -46,8 +45,16 @@ function evolveTo(save: Save, to: number): Result {
   return { save: { ...save, species: to, evolution: null, cancelledAtLevel: null }, events: [{ kind: 'evolved', from, to }] }
 }
 
+/** Ends the evolution in progress; a level the new species has already passed starts its next one. */
 export function finishEvolution(save: Save): Result {
-  return save.evolution ? evolveTo(save, save.evolution.to) : { save, events: [] }
+  if (!save.evolution) return { save, events: [] }
+  const done = evolveTo(save, save.evolution.to)
+  const next = levelEvolution(done.save.species, done.save.level, null)
+  if (next === null) return done
+  return {
+    save: { ...done.save, evolution: { to: next } },
+    events: [...done.events, { kind: 'evolving', from: done.save.species, to: next }],
+  }
 }
 
 export function cancelEvolution(save: Save): { save: Save; cancelled: boolean } {
@@ -97,7 +104,8 @@ export function applyTurn(save: Save, scored: ReturnType<typeof scoreTally>, loc
 }
 
 export function feed(save: Save, local: LocalTime): Result & { fed: boolean; gained: number } {
-  if (save.feed.lastDate === local.date) return { save, events: [], fed: false, gained: 0 }
+  // `>=`: a clock moved back to an earlier day cannot feed again.
+  if (save.feed.lastDate !== null && save.feed.lastDate >= local.date) return { save, events: [], fed: false, gained: 0 }
   const run = save.feed.lastDate === previousDate(local.date) ? save.counters.feedRun + 1 : 1
   const growth = species(save.species).growth
   const toNext = save.level >= MAX_LEVEL ? 0 : expForLevel(growth, save.level + 1) - save.exp

@@ -138,9 +138,9 @@ function toSvg(rows: Cell[][]): string {
   ].join('\n')
 }
 
-/** The band for `view` in `maxRows` x `columns`, with the prompt under it, as an SVG. */
+/** The band for `view` in `maxRows` x `columns`, with the prompt under it, as an SVG: as fullscreen draws it, so the art shows. */
 export function renderScene(view: BandView, maxRows: number, columns: number): string {
-  const grid = layout(band(els, view, maxRows, columns) as unknown as Node)
+  const grid = layout(band(els, view, maxRows, columns, true) as unknown as Node)
   const rows = grid.rows.map(r => pad(r, grid.w))
   const prompt: Cell[] = [{ ch: '>', fg: MUTED }, { ch: ' ' }, { ch: ' ', bg: MUTED }]
   return toSvg([...rows, [], prompt])

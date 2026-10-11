@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
-import type { Signal } from '../hooks/signals'
-import { emptyTally, scoreTally, withoutReds, type Tally } from '../hooks/tally'
+import { configSignal, type Signal } from '../hooks/signals'
+import { emptyTally, scoreTally, TURN_CAP, withoutReds, type Tally } from '../hooks/tally'
 
 const tool: Signal = { kind: 'tool' }
 
@@ -17,7 +17,7 @@ describe('scoreTally', () => {
   })
   test('config edits count once per file per turn', () => {
     const t = { ...emptyTally(), signals: [
-      { kind: 'config', path: '/a/CLAUDE.md' }, { kind: 'config', path: '/a/CLAUDE.md' }, { kind: 'config', path: '/b/CLAUDE.md' },
+      configSignal('/a/CLAUDE.md'), configSignal('/a/CLAUDE.md'), configSignal('/b/CLAUDE.md'),
     ] as Signal[] }
     const r = scoreTally(t, {})
     expect(r.bySource.config).toBe(50)
@@ -57,5 +57,19 @@ describe('scoreTally', () => {
   test('withoutReds drops the failed checks only', () => {
     const t: Tally = { prompts: 1, activeWindows: 1, signals: [{ kind: 'tool' }, { kind: 'check', key: 'npm test', ok: false }, { kind: 'check', key: 'tsc', ok: true }, { kind: 'commit' }] }
     expect(withoutReds(t)).toEqual({ ...t, signals: [{ kind: 'tool' }, { kind: 'check', key: 'tsc', ok: true }, { kind: 'commit' }] })
+  })
+  test('one turn counts at most 3 config files, 3 commits, 2 pushes or PRs and 3 greens, in EXP and counters', () => {
+    const many = (n: number, f: (i: number) => Signal) => Array.from({ length: n }, (_, i) => f(i))
+    const reds = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`c${i}`, true]))
+    const t = { ...emptyTally(), signals: [
+      ...many(5, i => configSignal(`/r/.claude/agents/a${i}.md`)),
+      ...many(5, () => ({ kind: 'commit' })),
+      ...many(2, () => ({ kind: 'push' })), { kind: 'pr' },
+      ...many(5, i => ({ kind: 'check', key: `c${i}`, ok: true })),
+    ] as Signal[] }
+    const r = scoreTally(t, reds)
+    expect([r.configEdits, r.commits, r.pushes, r.greens]).toEqual([TURN_CAP.config, TURN_CAP.commit, TURN_CAP.push, TURN_CAP.green])
+    expect(r.bySource).toEqual({ config: 75, commit: 90, push: 100, green: 120 })
+    expect(r.checks).toEqual({})
   })
 })

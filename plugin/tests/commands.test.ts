@@ -21,7 +21,7 @@ describe('commands', () => {
   })
   test('stats shows level, EXP to next, bag and streak', () => {
     const s = { ...freshSave([1, 2, 3, 4]), species: 25, bag: { 'thunder-stone': 1 } }
-    const t = statsText(s)
+    const t = statsText(s, '2026-10-11')
     expect(t).toContain('PIKACHU')
     expect(t).toContain('Lv 5')
     expect(t).toContain('THUNDER STONE ×1')
@@ -29,7 +29,7 @@ describe('commands', () => {
   })
   test('stats skips EXP sources this version does not know', () => {
     const s = { ...freshSave([1, 2, 3, 4]), expBySource: { prompt: 10, bogus: 5 } as Record<string, number> }
-    const t = statsText(s)
+    const t = statsText(s, '2026-10-11')
     expect(t).toContain('prompts: 10')
     expect(t).not.toContain('undefined')
   })
@@ -44,5 +44,13 @@ describe('commands', () => {
     for (const sub of ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'quiet', 'nickname', 'export', 'import', 'restore', 'reset']) {
       expect(helpText('buddy')).toContain(`/buddy ${sub}`)
     }
+  })
+  test('stats shows a broken feed streak as 0, and the Leaf Stone progress with it', () => {
+    const fed = (lastDate: string) => ({ ...freshSave([1, 2, 3, 4]), feed: { lastDate }, counters: { greens: 0, commits: 0, configEdits: 0, feedRun: 3 } })
+    expect(statsText(fed('2026-10-11'), '2026-10-11')).toContain('Feed streak: 3 days.')
+    expect(statsText(fed('2026-10-10'), '2026-10-11')).toContain('Leaf Stone 3/7 feed days')
+    const broken = statsText(fed('2026-10-09'), '2026-10-11')
+    expect(broken).toContain('Feed streak: 0 days.')
+    expect(broken).toContain('Leaf Stone 0/7 feed days')
   })
 })

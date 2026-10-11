@@ -1,6 +1,9 @@
+import { fnv1a } from './codec'
+
+/** A config edit holds the file's name and a hash of its path (to count each file once), never the path. */
 export type Signal =
   | { kind: 'tool' }
-  | { kind: 'config'; path: string }
+  | { kind: 'config'; name: string; file: string }
   | { kind: 'commit' }
   | { kind: 'push' }
   | { kind: 'pr' }
@@ -120,11 +123,36 @@ const normalise = (seg: string[]) => {
   return out.slice(i).filter(t => t !== '')
 }
 
+const CONFIG_NAMES = new Set(['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md'])
+// Folders of a `.claude/` directory whose files are config; the rest (plans, projects, worktrees, plugins,
+// todos, shell snapshots and the like) is the engine's own state.
+const CONFIG_DIRS = new Set(['agents', 'commands', 'skills', 'hooks', 'output-styles'])
+const CONFIG_FILES_IN_CLAUDE = /^(settings.*\.json|CLAUDE\.md|keybindings\.json)$/
+
+/** A path's segments, `/` or `\` separated. */
+const segments = (path: string) => path.split(/[\\/]/)
+
+/** A path's file name, whichever separator it uses. */
+export const fileName = (path: string) => segments(path).pop() ?? ''
+
+/**
+ * CLAUDE.md, CLAUDE.local.md and AGENTS.md at any depth; in a `.claude/` directory, its settings*.json,
+ * CLAUDE.md and keybindings.json and the files under its agents, commands, skills, hooks and output-styles
+ * folders. Nothing under node_modules. The innermost `.claude` decides, so a worktree's own
+ * `.claude/settings.json` counts while its source files do not.
+ */
 export function isConfigPath(path: string): boolean {
-  const name = path.split('/').pop() ?? ''
-  if (name === 'CLAUDE.md' || name === 'CLAUDE.local.md' || name === 'AGENTS.md') return true
-  return path.includes('/.claude/') || path.startsWith('.claude/')
+  const parts = segments(path)
+  if (parts.includes('node_modules')) return false
+  const name = parts[parts.length - 1] ?? ''
+  if (CONFIG_NAMES.has(name)) return true
+  const at = parts.lastIndexOf('.claude')
+  if (at === -1) return false
+  if (at === parts.length - 2) return CONFIG_FILES_IN_CLAUDE.test(name)
+  return at < parts.length - 2 && CONFIG_DIRS.has(parts[at + 1]!)
 }
+
+export const configSignal = (path: string): Signal => ({ kind: 'config', name: fileName(path), file: fnv1a(path) })
 
 function gitArgs(seg: string[]): { sub: string | undefined; args: string[] } {
   let i = 1
@@ -153,7 +181,30 @@ function isCheck(seg: string[]): boolean {
   return CHECK_WORDS.test([cmd, ...words].join(' '))
 }
 
-function bashSignals(command: string, ok: boolean): Signal[] {
+/** The longest check key: a check is told apart by its runner and leading words, never by its arguments. */
+export const CHECK_KEY_MAX = 60
+const KEY_WORD = /^[A-Za-z0-9][\w:@+-]*$/
+
+/**
+ * What a check is saved, logged and sent as: the runner and at most two words after it, stopping at the
+ * first flag, `--`, assignment, path or anything else that is not a plain word. So `pytest -q tests/x`
+ * is `pytest` and `make test TOKEN=abc` is `make test`: no flag values, secrets or paths leave the call.
+ */
+export function checkKey(tokens: readonly string[]): string {
+  const [runner, ...rest] = tokens
+  if (!runner) return ''
+  const words: string[] = []
+  for (const t of rest) {
+    if (words.length === 2 || !KEY_WORD.test(t)) break
+    words.push(t)
+  }
+  return [runner, ...words].join(' ').slice(0, CHECK_KEY_MAX)
+}
+
+/** An older build's key (the whole normalised command) as this build keys it. */
+export const rekeyCheck = (key: string) => checkKey(key.split(/\s+/).filter(Boolean))
+
+function bashSignals(command: string, ok: boolean, resultText: string): Signal[] {
   const raw = splitRaw(command)
   if (raw.slice(0, -1).some(s => s.sep === '||' || s.sep === ';' || s.sep === '\n' || s.sep === '&')) return []
   if (raw[raw.length - 1]?.sep === '&') return []
@@ -166,25 +217,26 @@ function bashSignals(command: string, ok: boolean): Signal[] {
     if (cmd === 'git') {
       const { sub, args } = gitArgs(seg)
       if (!ok) continue
-      if (sub === 'commit' && !hasFlag(args, ['--dry-run'])) out.push({ kind: 'commit' })
-      else if (sub === 'push' && !hasFlag(args, ['--dry-run', '-n'])) out.push({ kind: 'push' })
+      if (sub === 'commit' && !hasFlag(args, ['--dry-run', '--allow-empty'])) out.push({ kind: 'commit' })
+      else if (sub === 'push' && !hasFlag(args, ['--dry-run', '-n']) && !resultText.includes('Everything up-to-date')) out.push({ kind: 'push' })
     } else if (cmd === 'gh') {
       if (ok && seg[1] === 'pr' && seg[2] === 'create') out.push({ kind: 'pr' })
     } else if (isCheck(seg) && (ok || segs.length === 1)) {
-      out.push({ kind: 'check', key: seg.join(' '), ok })
+      out.push({ kind: 'check', key: checkKey(seg), ok })
     }
   }
   return out
 }
 
-export function signalsFromTool(tool: string, input: Record<string, unknown>, outcome: Outcome): Signal[] {
+/** `resultText` is the result as the model read it: a push that had nothing to send says so there. */
+export function signalsFromTool(tool: string, input: Record<string, unknown>, outcome: Outcome, resultText = ''): Signal[] {
   const out: Signal[] = [{ kind: 'tool' }]
   if (outcome === 'unknown') return out
   if (tool === 'Bash' && typeof input.command === 'string' && input.run_in_background !== true) {
-    out.push(...bashSignals(input.command, outcome === 'ok'))
+    out.push(...bashSignals(input.command, outcome === 'ok', resultText))
   }
   if (outcome === 'ok' && (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit') && typeof input.file_path === 'string' && isConfigPath(input.file_path)) {
-    out.push({ kind: 'config', path: input.file_path })
+    out.push(configSignal(input.file_path))
   }
   return out
 }

@@ -2,12 +2,17 @@ import type { Save } from '../types'
 import { base64Decode, base64Encode, fnv1a, fromUtf8, utf8 } from './codec'
 import { CHECKS_MAX, PENDING_LOG_MAX } from './config'
 import { STONES } from './data/types'
-import { expForLevel } from './exp'
+import { expForLevel, levelForExp } from './exp'
+import { FINISHED_MAX, normaliseLine } from './log'
+import { rekeyCheck } from './signals'
 import { species } from './data/dex'
 import { PERSONALITIES, rollFrom } from './roll'
+import { SOURCES } from './tally'
 
 export const SAVE_VERSION = 1
 export const START_LEVEL = 5
+/** Characters (code points, so an emoji is one) a nickname may have. */
+export const NICKNAME_MAX = 12
 
 export type { Save }
 
@@ -20,7 +25,7 @@ export function freshSave(seed: number[], lastResetDate: string | null = null): 
     nickname: null, level: START_LEVEL, exp, lifetimeExp: 0, expBySource: {}, bag: {},
     counters: { greens: 0, commits: 0, configEdits: 0, feedRun: 0 }, checks: {},
     lastMoonDate: null, feed: { lastDate: null }, pendingLog: [], speechOn: true, view: 'full',
-    evolution: null, cancelledAtLevel: null, lastResetDate,
+    evolution: null, cancelledAtLevel: null, lastResetDate, finishedSessions: [],
   }
 }
 
@@ -28,13 +33,12 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 const isInt = (v: unknown, lo: number, hi: number) => typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi
 const isNum = (v: unknown, lo: number, hi = Infinity): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi
 const isDate = (v: unknown) => v === null || (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v))
-const SOURCES: readonly string[] = ['prompt', 'tool', 'active', 'config', 'commit', 'push', 'green', 'judge', 'feed']
 const COUNTERS = ['greens', 'commits', 'configEdits', 'feedRun']
 
 /**
  * The shape version 1 promises. Unknown keys inside expBySource and bag are ignored (kept, never read),
  * so a point release may add a source or an item without old builds calling the save corrupt.
- * lastResetDate came later and is optional: a save without it reads as null.
+ * lastResetDate and finishedSessions came later and are optional: a save without them reads as null and [].
  * Any other change to the shape needs a version bump.
  */
 function validSave(raw: Record<string, unknown>): boolean {
@@ -42,11 +46,12 @@ function validSave(raw: Record<string, unknown>): boolean {
   if (!Array.isArray(raw.seed) || raw.seed.length !== 4 || !raw.seed.every(n => typeof n === 'number' && Number.isInteger(n))) return false
   if (!isInt(raw.species, 1, 151) || !isInt(raw.level, 1, 100)) return false
   const growth = species(raw.species as number).growth
-  if (!isNum(raw.exp, expForLevel(growth, raw.level as number), expForLevel(growth, 100))) return false
+  // The level is the one its EXP reaches: no Gen 1 evolution changes the growth rate, so this holds through them.
+  if (!isNum(raw.exp, 0, expForLevel(growth, 100)) || levelForExp(growth, raw.exp) !== raw.level) return false
   if (!isNum(raw.lifetimeExp, 0)) return false
   if (typeof raw.isShiny !== 'boolean' || !(PERSONALITIES as readonly unknown[]).includes(raw.personality)) return false
-  if (raw.nickname !== null && (typeof raw.nickname !== 'string' || raw.nickname.length > 12)) return false
-  if (!isObj(raw.expBySource) || !Object.entries(raw.expBySource).every(([k, v]) => !SOURCES.includes(k) || isNum(v, 0))) return false
+  if (raw.nickname !== null && (typeof raw.nickname !== 'string' || [...raw.nickname].length > NICKNAME_MAX)) return false
+  if (!isObj(raw.expBySource) || !Object.entries(raw.expBySource).every(([k, v]) => !(SOURCES as readonly string[]).includes(k) || isNum(v, 0))) return false
   if (!isObj(raw.bag) || !Object.entries(raw.bag).every(([k, v]) => !(STONES as readonly string[]).includes(k) || isInt(v, 0, Number.MAX_SAFE_INTEGER))) return false
   if (!isObj(raw.counters) || !COUNTERS.every(k => isInt((raw.counters as Record<string, unknown>)[k], 0, Number.MAX_SAFE_INTEGER))) return false
   if (!isObj(raw.checks) || !Object.values(raw.checks).every(v => typeof v === 'boolean')) return false
@@ -54,9 +59,11 @@ function validSave(raw: Record<string, unknown>): boolean {
   if (!isObj(raw.feed) || !isDate(raw.feed.lastDate)) return false
   if (!Array.isArray(raw.pendingLog) || raw.pendingLog.length > PENDING_LOG_MAX || !raw.pendingLog.every(x => typeof x === 'string')) return false
   if (typeof raw.speechOn !== 'boolean' || (raw.view !== 'compact' && raw.view !== 'full')) return false
-  if (raw.evolution !== null && !(isObj(raw.evolution) && isInt(raw.evolution.to, 1, 151))) return false
+  const evolvesInto = species(raw.species as number).evolutions.map(e => e.to)
+  if (raw.evolution !== null && !(isObj(raw.evolution) && evolvesInto.includes(raw.evolution.to as number))) return false
   if (raw.cancelledAtLevel !== null && !isInt(raw.cancelledAtLevel, 1, 100)) return false
   if (raw.lastResetDate !== undefined && !isDate(raw.lastResetDate)) return false
+  if (raw.finishedSessions !== undefined && !(Array.isArray(raw.finishedSessions) && raw.finishedSessions.every(x => typeof x === 'string'))) return false
   return true
 }
 
@@ -69,18 +76,29 @@ export function parseSave(raw: unknown):
 }
 
 /**
- * A save older builds wrote with more than CHECKS_MAX checks keeps the newest (scoreTally adds them last);
- * one without lastResetDate gets null.
+ * Older builds keyed checks by the whole command and logged it whole: both are cut down to check keys
+ * (two old keys that become one keep the newer place), and each log line to LOG_LINE_MAX. More than
+ * CHECKS_MAX checks keep the newest (scoreTally adds them last); a save without lastResetDate or
+ * finishedSessions gets null or [].
  */
 function normalise(save: Save): Save {
-  const checks = Object.entries(save.checks)
+  const rekeyed: Record<string, boolean> = {}
+  for (const [k, v] of Object.entries(save.checks)) {
+    const key = rekeyCheck(k)
+    delete rekeyed[key]
+    rekeyed[key] = v
+  }
+  const checks = Object.entries(rekeyed)
   return {
     ...save,
-    checks: checks.length > CHECKS_MAX ? Object.fromEntries(checks.slice(-CHECKS_MAX)) : save.checks,
+    checks: Object.fromEntries(checks.slice(-CHECKS_MAX)),
+    pendingLog: save.pendingLog.map(normaliseLine),
     lastResetDate: save.lastResetDate ?? null,
+    finishedSessions: (save.finishedSessions ?? []).slice(-FINISHED_MAX),
   }
 }
 
+/** The checksum only catches a blob damaged in copying; it signs nothing, so an import is trusted as a local game's. */
 export function exportBlob(save: Save): string {
   const body = JSON.stringify(save)
   return base64Encode(utf8(`${fnv1a(body)}.${body}`))

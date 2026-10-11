@@ -1,6 +1,7 @@
 import type { ModelCompleteRequest, ModelCompleteResult } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
 import { cleanReply, cry, speak, speechPrompt, turnFacts } from '../hooks/speech'
+import { configSignal } from '../hooks/signals'
 import { freshSave } from '../hooks/state'
 
 const usage = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
@@ -10,8 +11,13 @@ const client = (complete: (r: ModelCompleteRequest) => ModelCompleteResult | Pro
 
 describe('speech', () => {
   test('facts summarise without content', () => {
-    expect(turnFacts([{ kind: 'tool' }, { kind: 'tool' }, { kind: 'commit' }, { kind: 'check', key: 'npm test', ok: false }, { kind: 'config', path: '/r/CLAUDE.md' }], 1))
+    expect(turnFacts([{ kind: 'tool' }, { kind: 'tool' }, { kind: 'commit' }, { kind: 'check', key: 'npm test', ok: false }, configSignal('/r/CLAUDE.md')], 1))
       .toBe('1 prompt; 2 tool calls; 1 commit; checks: npm test failed; edited config: CLAUDE.md')
+  })
+  test('a Windows config path reaches the facts as its file name only', () => {
+    const facts = turnFacts([configSignal('C:\\Users\\alice\\secretproj\\CLAUDE.md'), configSignal('C:\\Users\\alice\\secretproj\\.claude\\settings.json')], 0)
+    expect(facts).toBe('edited config: CLAUDE.md, settings.json')
+    expect(facts).not.toMatch(/alice|secretproj/)
     expect(turnFacts([], 0)).toBe('a quiet turn')
   })
   test('facts pluralise pushes and PRs', () => {
@@ -20,6 +26,9 @@ describe('speech', () => {
   })
   test('cry is built from the name', () => {
     expect(cry('PIKACHU', () => 0)).toMatch(/^Pika/)
+    expect(cry('MR. MIME', () => 0)).toBe('Mr!')
+    expect(cry("FARFETCH'D", () => 0)).toBe('Farf!')
+    expect(cry('NIDORAN♀', () => 0)).toBe('Nido!')
   })
   test('prompt carries species, level and personality', () => {
     const s = freshSave([1, 2, 3, 4])

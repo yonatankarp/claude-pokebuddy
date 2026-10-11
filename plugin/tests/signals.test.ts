@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { isConfigPath, signalsFromTool, splitCommand, type Signal } from '../hooks/signals'
+import { CHECK_KEY_MAX, checkKey, configSignal, isConfigPath, rekeyCheck, signalsFromTool, splitCommand, type Signal } from '../hooks/signals'
 
 const label = (s: Signal) => (s.kind === 'check' ? `check:${s.key}:${s.ok}` : s.kind)
 const bash = (command: string, isError = false) => signalsFromTool('Bash', { command }, isError ? 'failed' : 'ok').map(label)
@@ -46,9 +46,9 @@ describe('signalsFromTool', () => {
     expect(bash('./gradlew test', true)).toEqual(['tool', 'check:./gradlew test:false'])
     expect(bash('npm  test')).toEqual(['tool', 'check:npm test:true'])
     expect(bash('npx vitest run')).toEqual(['tool', 'check:npx vitest run:true'])
-    expect(bash('cargo build --release')).toEqual(['tool', 'check:cargo build --release:true'])
-    expect(bash('pytest -q', true)).toEqual(['tool', 'check:pytest -q:false'])
-    expect(bash('tsc --noEmit')).toEqual(['tool', 'check:tsc --noEmit:true'])
+    expect(bash('cargo build --release')).toEqual(['tool', 'check:cargo build:true'])
+    expect(bash('pytest -q', true)).toEqual(['tool', 'check:pytest:false'])
+    expect(bash('tsc --noEmit')).toEqual(['tool', 'check:tsc:true'])
     expect(bash('npm install')).toEqual(['tool'])
     expect(bash('./run-checks.sh')).toEqual(['tool'])
   })
@@ -70,12 +70,44 @@ describe('signalsFromTool', () => {
     expect(isConfigPath('/r/CLAUDE.local.md')).toBe(true)
     expect(isConfigPath('/r/hooks/register.tsx')).toBe(false)
   })
+  test('isConfigPath: under .claude only settings, CLAUDE.md, keybindings and the agents, commands, skills, hooks and output-styles folders', () => {
+    expect(isConfigPath('/r/.claude/settings.json')).toBe(true)
+    expect(isConfigPath('/r/.claude/settings.local.json')).toBe(true)
+    expect(isConfigPath('/Users/me/.claude/CLAUDE.md')).toBe(true)
+    expect(isConfigPath('/Users/me/.claude/keybindings.json')).toBe(true)
+    for (const dir of ['agents', 'commands', 'skills', 'hooks', 'output-styles']) expect(isConfigPath(`/r/.claude/${dir}/x/y.md`)).toBe(true)
+    expect(isConfigPath('.claude/commands/ship.md')).toBe(true)
+    expect(isConfigPath('C:\\r\\.claude\\settings.json')).toBe(true)
+    expect(isConfigPath('/r/.claude/worktrees/a/.claude/settings.json')).toBe(true)
+    expect(isConfigPath('/r/.claude/worktrees/a/CLAUDE.md')).toBe(true)
+  })
+  test('isConfigPath: the rest of .claude and node_modules are not config', () => {
+    expect(isConfigPath('/r/.claude/worktrees/a/src/x.ts')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/plans/happy-fox.md')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/projects/-r/memory/MEMORY.md')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/projects/-r/abc.jsonl')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/plugins/cache/p/commands/x.md')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/todos/t.json')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/shell-snapshots/s.sh')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/history.jsonl')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/agents')).toBe(false)
+    expect(isConfigPath('/r/node_modules/pkg/CLAUDE.md')).toBe(false)
+    expect(isConfigPath('/r/node_modules/pkg/.claude/settings.json')).toBe(false)
+    expect(isConfigPath('/r/.claude')).toBe(false)
+  })
+  test('a config signal holds the file name, never the path', () => {
+    const [, sig] = signalsFromTool('Edit', { file_path: 'C:\\Users\\alice\\secretproj\\CLAUDE.md' }, 'ok')
+    expect(sig).toMatchObject({ kind: 'config', name: 'CLAUDE.md' })
+    expect(JSON.stringify(sig)).not.toMatch(/alice|secretproj|Users/)
+    expect(configSignal('/a/CLAUDE.md')).not.toEqual(configSignal('/b/CLAUDE.md'))
+    expect(configSignal('/a/CLAUDE.md')).toEqual(configSignal('/a/CLAUDE.md'))
+  })
 })
 
 describe('signalsFromTool hardening', () => {
   test('newline separates commands and continuation is dropped', () => {
     expect(bash('git add -A\ngit commit -m x')).toEqual(['tool'])
-    expect(bash('./gradlew test \\\n  --info')).toEqual(['tool', 'check:./gradlew test --info:true'])
+    expect(bash('./gradlew test \\\n  --info')).toEqual(['tool', 'check:./gradlew test:true'])
     expect(splitCommand('a\nb')).toEqual([{ tokens: ['a'], pipedOut: false }, { tokens: ['b'], pipedOut: false }])
   })
   test('unquoted heredoc bodies are skipped, quoted ones are not', () => {
@@ -109,9 +141,14 @@ describe('signalsFromTool hardening', () => {
     expect(bash('npm install --save-dev vitest')).toEqual(['tool'])
     expect(bash('cargo install clippy')).toEqual(['tool'])
     expect(bash('npx vitest run')).toEqual(['tool', 'check:npx vitest run:true'])
-    expect(bash('pytest -q')).toEqual(['tool', 'check:pytest -q:true'])
-    expect(bash('go test ./...')).toEqual(['tool', 'check:go test ./...:true'])
-    expect(bash('make -j4 build')).toEqual(['tool', 'check:make -j4 build:true'])
+    expect(bash('pytest -q')).toEqual(['tool', 'check:pytest:true'])
+    expect(bash('go test ./...')).toEqual(['tool', 'check:go test:true'])
+    expect(bash('make -j4 build')).toEqual(['tool', 'check:make:true'])
+  })
+  test('empty commits and pushes with nothing to send earn nothing', () => {
+    expect(bash('git commit --allow-empty -m a && git commit --allow-empty -m b')).toEqual(['tool'])
+    expect(signalsFromTool('Bash', { command: 'git push' }, 'ok', 'Everything up-to-date').map(label)).toEqual(['tool'])
+    expect(signalsFromTool('Bash', { command: 'git push' }, 'ok', 'To github.com:x/y.git\n   a..b  main -> main').map(label)).toEqual(['tool', 'push'])
   })
   test('dry-run flags', () => {
     expect(bash('git push -n')).toEqual(['tool'])
@@ -143,5 +180,28 @@ describe('signalsFromTool outcome', () => {
     expect(signalsFromTool('Bash', { command: 'npm test' }, 'unknown').map(label)).toEqual(['tool'])
     expect(signalsFromTool('Bash', { command: 'git commit -m x' }, 'unknown').map(label)).toEqual(['tool'])
     expect(signalsFromTool('Edit', { file_path: '/repo/CLAUDE.md' }, 'unknown').map(label)).toEqual(['tool'])
+  })
+})
+
+describe('check keys keep only the runner and its leading words', () => {
+  test('no flags, flag values, assignments or paths', () => {
+    expect(bash('make test TOKEN=abc')).toEqual(['tool', 'check:make test:true'])
+    expect(bash('pytest --password=x', true)).toEqual(['tool', 'check:pytest:false'])
+    expect(bash('pytest -k secret_name tests/test_login.py')).toEqual(['tool', 'check:pytest:true'])
+    expect(bash('npm test -- src/login.test.ts')).toEqual(['tool', 'check:npm test:true'])
+    expect(bash('npm run test:unit -- --watch')).toEqual(['tool', 'check:npm run test:unit:true'])
+    expect(bash('API_KEY=sk-123 npm test')).toEqual(['tool', 'check:npm test:true'])
+    expect(bash('npm test "reply 100"')).toEqual(['tool', 'check:npm test:true'])
+    expect(bash('pytest test_login.py')).toEqual(['tool', 'check:pytest:true'])
+  })
+  test('at most two words and CHECK_KEY_MAX characters', () => {
+    expect(checkKey(['npx', 'vitest', 'run', 'login'])).toBe('npx vitest run')
+    expect(checkKey(['make', 'a'.repeat(100)]).length).toBe(CHECK_KEY_MAX)
+    expect(checkKey([])).toBe('')
+  })
+  test('an older build\'s whole-command key is cut down the same way', () => {
+    expect(rekeyCheck('pytest --password=x tests')).toBe('pytest')
+    expect(rekeyCheck('make test TOKEN=abc')).toBe('make test')
+    expect(rekeyCheck('npm test')).toBe('npm test')
   })
 })
