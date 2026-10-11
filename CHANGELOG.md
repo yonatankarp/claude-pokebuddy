@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 (2026-10-11)
+
+- `/buddy` opens a panel instead of printing text: your Pokémon with its sprite, EXP and skills, your box, the Pokédex and every command as a button, in tabs. Esc closes it. `-p` runs still get text, and a mistyped command opens the Commands tab.
+- Catch more Pokémon: wild ones turn up at random as you work (a 1 in 5 chance for each fixed check, 1 in 10 for each commit, 3 in 100 for any turn of tool work, an even chance for a session judged 80 or more) and on every 7th day of a feed streak, at most 3 a day, and join your box.
+- `/buddy box`, `/buddy switch <number or name>` and `/buddy release <number> confirm`. Only the active Pokémon earns EXP; skills, stones and the feed streak are yours.
+- `/buddy dex` and the Pokédex tab show how many of the 151 you have caught.
+- Saves from earlier versions load as they are, with an empty box.
+
 ## 1.1.0 (2026-10-11)
 
 - New Pokémon start at level 1 instead of 5. Existing buddies keep their level.

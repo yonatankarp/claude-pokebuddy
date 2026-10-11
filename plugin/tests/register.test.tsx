@@ -1,6 +1,7 @@
 import type { On } from 'claude-code'
 import { describe, expect, mock, test, type Engine } from 'claude-code/testing'
 import { countsAsPrompt, shouldHandleTurn } from '../hooks/register'
+import { ENCOUNTERS_PER_DAY } from '../hooks/collection'
 import { COMMAND, EVOLVE_MS } from '../hooks/config'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
@@ -743,5 +744,103 @@ describe('register', () => {
       expect(await ui.find({ type: 'Text', text: /DEBUGGING/ }) !== undefined).toBe(true)
       await ui.unmount()
     }
+  })
+
+  const pane = ($: Engine, surface: 'terminal' | 'desktop') => $.ui.mount({
+    plugin: 'pokebuddy', surface, component: 'Pane', requestId: 'pokebuddy',
+    props: { title: 'pokebuddy', isFocused: true, bodyColumns: 120, placement: 'inline', scroll: { offset: 0, bodyRows: 30 }, view: {} },
+    viewport: { columns: 120, rows: 40 },
+  })
+
+  test('bare /buddy opens the panel, and the stats as text where it cannot be placed', async ($, on) => {
+    world(on, { save: pika() })
+    let opened: unknown = null
+    let isPlaced = true
+    on('ui.open', async (_$, e) => { opened = e; return { value: isPlaced ? { isPlaced: true as const } : { isPlaced: false as const, reason: 'narrow' as never } } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run(''))).text).toBeUndefined()
+    expect(opened).toMatchObject({ id: 'pokebuddy', focus: true, closeOnEscape: true, holdToasts: true })
+    expect((await $.command.run(run('dance'))).text).toBeUndefined()
+    const ui = await pane($, 'terminal')
+    expect(await ui.find({ type: 'Text', text: /Typed commands/ })).toBeDefined()
+    await ui.unmount()
+    isPlaced = false
+    expect((await $.command.run(run(''))).text).toContain('PIKACHU')
+    expect((await $.command.run(run('dance'))).text).toContain('/buddy box')
+  })
+
+  test('the panel draws every tab on terminal and desktop, and its buttons act', async ($, on) => {
+    const store = world(on, { save: { ...pika(), caught: [], box: [{ species: 92, isShiny: true, personality: 'brave', nickname: null, level: 1, exp: 0 }] } })
+    on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+    mock.clock(on, { now: NOON })
+    await start($)
+    await $.command.run(run(''))
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await pane($, surface)
+      expect(await ui.find({ type: 'Text', text: /PIKACHU/ })).toBeDefined()
+      await ui.press({ key: 'tab:box' })
+      expect(await ui.find({ type: 'Text', text: /1\. GASTLY ★  Lv 1/ })).toBeDefined()
+      await ui.press({ key: 'tab:dex' })
+      expect(await ui.find({ type: 'Text', text: /Caught 2 \/ 151/ })).toBeDefined()
+      await ui.press({ key: 'tab:commands' })
+      expect(await ui.find({ type: 'Text', text: /Typed commands/ })).toBeDefined()
+      await ui.press({ key: 'tab:buddy' })
+      await ui.unmount()
+    }
+    const ui = await pane($, 'desktop')
+    await ui.press({ key: 'feed' })
+    expect(await ui.find({ type: 'Text', text: /Rare Candy/ })).toBeDefined()
+    expect((store.get('save') as { level: number }).level).toBe(2)
+    await ui.press({ key: 'tab:box' })
+    await ui.press({ key: 'switch:0' })
+    expect((store.get('save') as { species: number }).species).toBe(92)
+    await ui.press({ key: 'release:0' })
+    expect(await ui.find({ type: 'Text', text: /go for good/ })).toBeDefined()
+    await ui.press({ key: 'release-no' })
+    expect((store.get('save') as { box: unknown[] }).box).toHaveLength(1)
+    await ui.press({ key: 'release:0' })
+    await ui.press({ key: 'release-yes' })
+    expect((store.get('save') as { box: unknown[] }).box).toHaveLength(0)
+    await ui.unmount()
+  })
+
+  test('a fixed check may bring a wild Pokémon, boxed and toasted when it does', async ($, on) => {
+    const store = world(on, { save: pika() })
+    checks(on, ['red'])
+    mock.clock(on, { now: NOON })
+    await start($)
+    await npmTest($, 'red')
+    await endTurn($)
+    await npmTest($, 'green')
+    await endTurn($)
+    // The roll is random: either way the box and the toasts agree.
+    const save = store.get('save') as { box: { species: number }[]; caught: number[] }
+    const caughtToasts = toasts.filter(t => /A wild .+ appeared! Caught it/.test(t))
+    expect(save.box.length).toBe(caughtToasts.length)
+    expect(save.box.length <= ENCOUNTERS_PER_DAY).toBe(true)
+    for (const m of save.box) expect(save.caught).toContain(m.species)
+  })
+
+  test('box, switch and release as typed commands', async ($, on) => {
+    const store = world(on, { save: { ...pika(), box: [{ species: 92, isShiny: false, personality: 'brave', nickname: null, level: 1, exp: 0 }] } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('box'))).text).toContain('1. GASTLY  Lv 1')
+    expect((await $.command.run(run('switch gastly'))).text).toBe('GASTLY is your buddy now.')
+    expect((store.get('save') as { species: number; box: { species: number }[] }).box[0]!.species).toBe(25)
+    expect((await $.command.run(run('release 1'))).text).toMatch(/go for good.*release 1 confirm/)
+    expect((await $.command.run(run('release 1 confirm'))).text).toBe('Bye, PIKACHU!')
+    expect((store.get('save') as { box: unknown[] }).box).toHaveLength(0)
+    expect((await $.command.run(run('switch 1'))).text).toMatch(/No Pokémon/)
+  })
+
+  test('release lets go the very entry named, not a look-alike of the same species and level', async ($, on) => {
+    const gastly = { species: 92, personality: 'brave', nickname: null, level: 1, exp: 0 }
+    const store = world(on, { save: { ...pika(), box: [{ ...gastly, isShiny: true }, { ...gastly, isShiny: false }] } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('release 2 confirm'))).text).toBe('Bye, GASTLY!')
+    expect((store.get('save') as { box: { isShiny: boolean }[] }).box).toEqual([{ ...gastly, isShiny: true }])
   })
 })

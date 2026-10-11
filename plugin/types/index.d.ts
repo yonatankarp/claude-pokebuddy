@@ -1,4 +1,17 @@
-/** The buddy as `$.store` keeps it under `save`. Self-contained: hooks/state.ts imports it from here. */
+/** A caught Pokémon waiting in the box: what the active one keeps of its own, minus an evolution in progress. */
+export type Mon = {
+  species: number
+  isShiny: boolean
+  personality: 'cheerful' | 'grumpy' | 'sleepy' | 'brave' | 'timid' | 'sassy' | 'curious' | 'proud'
+  nickname: string | null
+  level: number
+  exp: number
+}
+
+/**
+ * The buddy as `$.store` keeps it under `save`. Self-contained: hooks/state.ts imports it from here.
+ * The top-level Pokémon fields are the active Pokémon; `box` holds the others.
+ */
 export type Save = {
   version: 1
   seed: number[]
@@ -22,6 +35,12 @@ export type Save = {
   cancelledAtLevel: number | null
   /** Sessions that ended (session.end) with lines still in pendingLog, to judge. Saves from before it read as []. */
   finishedSessions: string[]
+  /** The caught Pokémon not active. Saves from before it read as []. */
+  box: Mon[]
+  /** Every species caught, now or ever, by Pokédex number. Saves from before it read as the ones they hold. */
+  caught: number[]
+  /** Wild Pokémon met on the local day `date`, to cap them per day. Saves from before it read as none. */
+  encounters: { date: string | null; count: number }
 }
 
 declare module 'claude-code' {
@@ -30,6 +49,9 @@ declare module 'claude-code' {
       save: Save | null
       bubble: string | null
       flashUntil: number
+      panelTab: 'buddy' | 'box' | 'dex' | 'commands'
+      releasing: number | null
+      panelNote: string | null
     }
   }
 }

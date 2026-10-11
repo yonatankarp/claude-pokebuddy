@@ -17,9 +17,9 @@ To update, run `claude plugin update pokebuddy@pokebuddy` and restart Claude Cod
 
 ## Quick start
 
-1. `/buddy` shows your Pokémon and its progress.
-2. `/buddy feed` gives it a Rare Candy, once a day.
-3. `/buddy toggle` switches between the full view and a one-line compact view.
+1. `/buddy` opens the panel: your Pokémon, its skills, your box, the Pokédex and every command as a button. Esc closes it.
+2. Feed it a Rare Candy once a day, from the panel or with `/buddy feed`.
+3. Work as usual: wild Pokémon turn up as you fix checks and commit, and you can switch your buddy to any of them.
 
 ![the compact one-line view](docs/images/compact.svg)
 
@@ -29,7 +29,11 @@ In some places Claude Code shows the command as `/pokebuddy:buddy`.
 
 | Command | What it does |
 | --- | --- |
-| `/buddy` or `/buddy stats` | Your Pokémon, EXP, progress and skills |
+| `/buddy` | Open the panel (as text in `-p` runs) |
+| `/buddy stats` | Your Pokémon, EXP, progress and skills as text |
+| `/buddy box` | Your buddy and the Pokémon in your box |
+| `/buddy switch <number or name>` | Make a Pokémon from the box your buddy |
+| `/buddy release <number> confirm` | Let a Pokémon from the box go |
 | `/buddy dex [name or number]` | A Pokédex entry, yours by default |
 | `/buddy feed` | A Rare Candy, once a day (not in `-p` or SDK runs) |
 | `/buddy use <stone>` | Evolve with a stone from your bag |
@@ -84,6 +88,10 @@ A stone evolution only happens when you use the stone, so Eevee becomes whicheve
 
 </details>
 
+## Catching more
+
+Wild Pokémon turn up at random while you work and are caught at once. Each fixed check has a 1 in 5 chance of bringing one, each commit 1 in 10, any turn where Claude uses tools 3 in 100, and a session judged 80 or more an even chance. Every 7th day of a feed streak always brings one, with a better shiny chance. At most 3 a day. They join your box at level 1, and `/buddy switch` or the panel's Box tab makes any of them your buddy. Only your buddy earns EXP, so you choose who to train; skills, stones and the feed streak are yours and carry over. The Pokédex tab shows how many of the 151 you have caught.
+
 ## Settings and privacy
 
 Change them in `/config` (each option is a row there) or under `pluginConfigs.pokebuddy` in settings.json.
@@ -117,8 +125,8 @@ The plugin only watches: every hook passes its event on unchanged, and none bloc
 | `prompt.submit` | Counts the prompt for EXP (not slash commands) and redraws a save another session wrote |
 | `tool.call` | Reads the finished call (the tool, its command or file path, whether it failed, and its output) to spot commits, pushes, PRs, config edits and checks; only short check names and config file names reach the save |
 | `turn.complete` | Adds up the turn's EXP, logs a one-line summary and asks the speech model for a reaction |
-| `command.run` | Answers `/buddy` |
-| `ui.render` | Draws the band above the prompt |
+| `command.run` | Answers `/buddy`, and opens the panel for a bare `/buddy` |
+| `ui.render` | Draws the band above the prompt and the `/buddy` panel; the panel's buttons run `/buddy` commands |
 
 </details>
 

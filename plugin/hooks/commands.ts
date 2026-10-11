@@ -1,3 +1,4 @@
+import { catchWild, findInBox, JUDGE_ENCOUNTER, release, switchTo } from './collection'
 import { COMMAND } from './config'
 import { findSpecies, species } from './data/dex'
 import { STONES, stoneName, type Species, type Stone } from './data/types'
@@ -8,7 +9,7 @@ import { localTime, previousDate } from './localtime'
 import { NICKNAME_MAX, type Save } from './state'
 import type { Source } from './tally'
 
-const SUBS = ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'quiet', 'nickname'] as const
+const SUBS = ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'quiet', 'nickname', 'box', 'switch', 'release'] as const
 export type Parsed = { sub: (typeof SUBS)[number] | 'help'; rest: string }
 
 export function parseArgs(args: string): Parsed {
@@ -49,9 +50,17 @@ export function skillStats(save: Save): { name: string; value: number; exp: numb
 }
 
 /** The feed streak as of `today`: a run whose last feed was before yesterday is already broken. */
-function feedStreak(save: Save, today: string): number {
+export function feedStreak(save: Save, today: string): number {
   const last = save.feed.lastDate
   return last !== null && last >= previousDate(today) ? save.counters.feedRun : 0
+}
+
+/** How the species evolves, one line per evolution. */
+export function evolutionHints(sp: Species): string[] {
+  return sp.evolutions.map(e =>
+    e.kind === 'level' ? `Evolves into ${species(e.to).name} at Lv ${e.level}.`
+    : e.kind === 'stone' ? `Evolves into ${species(e.to).name} with a ${stoneName(e.stone)}.`
+    : `Evolves into ${species(e.to).name} when traded: push or open a PR at Lv ${TRADE_LEVEL} or higher.`)
 }
 
 export function statsText(save: Save, today: string): string {
@@ -63,10 +72,7 @@ export function statsText(save: Save, today: string): string {
   const fed = save.expBySource.feed ?? 0
   const c = save.counters
   const streak = feedStreak(save, today)
-  const hints = sp.evolutions.map(e =>
-    e.kind === 'level' ? `Evolves into ${species(e.to).name} at Lv ${e.level}.`
-    : e.kind === 'stone' ? `Evolves into ${species(e.to).name} with a ${stoneName(e.stone)}.`
-    : `Evolves into ${species(e.to).name} when traded: push or open a PR at Lv ${TRADE_LEVEL} or higher.`)
+  const hints = evolutionHints(sp)
   return [
     `${save.nickname ? `${save.nickname} (${sp.name})` : sp.name}${save.isShiny ? ' ★' : ''}  Lv ${save.level}  ${save.personality}`,
     `${toNext}. Lifetime EXP ${save.lifetimeExp}.`,
@@ -76,6 +82,21 @@ export function statsText(save: Save, today: string): string {
     `Stone progress: Thunder Stone ${c.greens % 10}/10 green checks, Fire Stone ${c.commits % 10}/10 commits, Water Stone ${c.configEdits % 10}/10 config edits, Leaf Stone ${streak % 7}/7 feed days.`,
     `Feed streak: ${streak} day${streak === 1 ? '' : 's'}.`,
     ...(hints.length ? hints : ['Does not evolve.']),
+  ].join('\n')
+}
+
+/** The active Pokémon's name as the person sees it. */
+function monName(s: { species: number; nickname: string | null }): string {
+  return s.nickname ? `${s.nickname} (${species(s.species).name})` : species(s.species).name
+}
+
+export function boxText(save: Save): string {
+  const line = (m: { species: number; nickname: string | null; isShiny: boolean; level: number }) => `${monName(m)}${m.isShiny ? ' ★' : ''}  Lv ${m.level}`
+  return [
+    `Buddy: ${line(save)}`,
+    save.box.length ? 'Box:' : `Box: empty. Wild Pokémon turn up at random as you work: fixing checks, committing, a session judged ${JUDGE_ENCOUNTER}+ or a 7-day feed streak.`,
+    ...save.box.map((m, i) => `  ${i + 1}. ${line(m)}`),
+    `Caught ${save.caught.length} / 151.`,
   ].join('\n')
 }
 
@@ -97,6 +118,9 @@ export function helpText(command: string): string {
     `/${command} toggle: compact or full view`,
     `/${command} quiet: speech and the session judge on or off`,
     `/${command} nickname <name>: set a nickname (empty to clear)`,
+    `/${command} box: your caught Pokémon`,
+    `/${command} switch <number or name>: make a Pokémon from the box your buddy`,
+    `/${command} release <number> confirm: let a Pokémon from the box go`,
   ].join('\n')
 }
 
@@ -118,6 +142,7 @@ export type CommandIO = {
   quietBubble: () => Promise<void>
   /** The evolution in progress was stopped: its timer must do nothing. */
   evolutionStopped: () => void
+  randomSeed: () => number[]
 }
 
 /** `/buddy <args>`: the reply to show. */
@@ -137,11 +162,50 @@ export async function runCommand(io: CommandIO, args: string): Promise<string> {
     }
     case 'dex': {
       const s = await io.load()
-      return s ? dexText(species(s.species), true) : io.blockedText()
+      return s ? `${dexText(species(s.species), true)}\nCaught ${s.caught.length} / 151.` : io.blockedText()
+    }
+    case 'box': {
+      const s = await io.load()
+      return s ? boxText(s) : io.blockedText()
+    }
+    case 'switch': {
+      let error: string | undefined
+      const r = await io.mutate(s => {
+        const i = findInBox(s, rest)
+        const out = i === null ? { save: s, error: `No Pokémon called "${rest}" in your box. /${COMMAND} box lists them.` } : switchTo(s, i)
+        error = out.error
+        return { save: out.save }
+      })
+      if (!r) return io.blockedText()
+      return error ?? `${monName(r.save)} is your buddy now.`
+    }
+    case 'release': {
+      const [which = '', word = ''] = rest.split(/\s+/)
+      const s = await io.load()
+      if (!s) return io.blockedText()
+      const i = findInBox(s, which)
+      if (i === null) return `No Pokémon at "${which}" in your box. /${COMMAND} box lists them.`
+      const m = s.box[i]!
+      if (word.toLowerCase() !== 'confirm') return `This lets ${m.nickname ?? species(m.species).name} (Lv ${m.level}) go for good. Run /${COMMAND} release ${i + 1} confirm to go ahead.`
+      // The entry read above, matched whole: a box another session changed meanwhile never loses the wrong one.
+      const same = (b: typeof m) => (Object.keys(m) as (keyof typeof m)[]).every(k => b[k] === m[k])
+      const r = await io.mutate(cur => {
+        const at = cur.box[i] && same(cur.box[i]) ? i : cur.box.findIndex(same)
+        return at === -1 ? { save: cur, released: undefined } : release(cur, at)
+      })
+      if (!r) return io.blockedText()
+      if (!r.released) return `Your box changed meanwhile; nothing was released. /${COMMAND} box lists it now.`
+      return `Bye, ${m.nickname ?? species(m.species).name}!`
     }
     case 'feed': {
       if (!io.isInteractive) return 'Feeding needs you at the terminal: a run with no one watching (-p, the SDK) earns nothing.'
-      const r = await io.mutate(s => feed(s, local))
+      const r = await io.mutate(s => {
+        const fed = feed(s, local)
+        // Every 7th day of a feed streak a lucky wild Pokémon comes to eat too.
+        if (!fed.fed || fed.save.counters.feedRun % 7 !== 0) return fed
+        const met = catchWild(fed.save, 1, io.randomSeed, local.date, true)
+        return { ...fed, save: met.save, events: [...fed.events, ...met.events] }
+      })
       if (!r) return io.blockedText()
       const name = species(r.save.species).name
       if (!r.fed) return `${name} has already eaten today. Come back tomorrow.`

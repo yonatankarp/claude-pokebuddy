@@ -126,6 +126,25 @@ export function bubbleBox({ Box, Text }: BandElements, side: Side) {
   )
 }
 
+/** The EXP bar: the app's font is proportional, so its empty half is a dimmed ▰, as ▱ is a different width there. */
+export function expBarTexts({ Text }: BandElements, save: Save, width: number, color: string, isApp: boolean) {
+  const bar = expBar(save, width)
+  const filled = isApp ? bar.replaceAll('▱', '') : bar
+  return [
+    <Text key="bar" color={color} wrap="truncate-end">{filled}</Text>,
+    ...(isApp ? [<Text key="bar-empty" dimColor wrap="truncate-end">{'▰'.repeat(bar.length - filled.length)}</Text>] : []),
+  ]
+}
+
+/** The active Pokémon's icon: pixels as an Svg in the app, half-blocks in the terminal. */
+export function buddyArt(els: BandElements, save: Save, isApp: boolean) {
+  const sp = species(save.species)
+  const { icon } = sp
+  return isApp && els.Svg
+    ? <els.Svg key="svg" source={spriteSvg(icon, save.isShiny)} alt={`${sp.name} sprite`} width={icon.w * SVG_SCALE} height={icon.h * SVG_SCALE} />
+    : drawRows(els, spriteRows(icon, save.isShiny))
+}
+
 export function band(els: BandElements, view: BandView, maxRows: number, columns: number, isFullscreen: boolean, surface: RenderSurface = 'terminal') {
   const { Box, Text } = els
   const { save } = view
@@ -139,26 +158,19 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
   const inline = room < INLINE_MIN || !said ? null : said.length <= room ? said : said.slice(0, room - 1) + '…'
   // The terminal's table hands back an Svg that draws nothing, so the surface decides, not the element.
   const isApp = surface !== 'terminal'
-  const bar = expBar(save, 8)
-  // The app's font is proportional: the empty half is a dimmed ▰, as ▱ is a different width there.
-  const barFilled = isApp ? bar.replaceAll('▱', '') : bar
   const line = (isBubbleInline: boolean) => (
     <Box key="line" flexDirection="row">
       <Text color={typeColor} wrap="truncate-end">◓ </Text>
       <Text bold wrap="truncate-end">{title}</Text>
       {save.isShiny && <Text color="#f8d030" wrap="truncate-end"> ★</Text>}
       <Text wrap="truncate-end">{level}</Text>
-      <Text color={typeColor} wrap="truncate-end">{barFilled}</Text>
-      {isApp && <Text dimColor wrap="truncate-end">{'▰'.repeat(bar.length - barFilled.length)}</Text>}
+      {expBarTexts(els, save, 8, typeColor, isApp)}
       {isBubbleInline && inline && <Text dimColor wrap="truncate-end">{inline}</Text>}
     </Box>
   )
   const layout = bandLayout(view, maxRows, columns, isFullscreen)
   if (layout === null) return line(true)
-  const { icon } = sp
-  const art = isApp && els.Svg
-    ? <els.Svg key="svg" source={spriteSvg(icon, save.isShiny)} alt={`${sp.name} sprite`} width={icon.w * SVG_SCALE} height={icon.h * SVG_SCALE} />
-    : drawRows(els, artRows(view))
+  const art = buddyArt(els, save, isApp)
   if (layout.side === null) {
     return (
       <Box flexDirection="column">
@@ -190,7 +202,7 @@ function skillsWidth(save: Save): number {
  * rows, because the desktop font is proportional and padding would not line the bars up. The terminal ends
  * each bar in ▱ like the EXP bar; the app in a dimmed ▰, as ▱ is a different width in its font.
  */
-function skillColumns({ Box, Text }: BandElements, save: Save, color: string, isApp: boolean) {
+export function skillColumns({ Box, Text }: BandElements, save: Save, color: string, isApp: boolean) {
   const stats = skillStats(save)
   return (
     <Box key="skills" flexDirection="row" marginLeft={2}>
