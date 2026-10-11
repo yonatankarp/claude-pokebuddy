@@ -2,6 +2,7 @@ import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
 
 const RAW = new URL('./raw/', import.meta.url)
 const SPRITES = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-ii/crystal/transparent'
+const ICONS = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-vii/icons'
 const API = 'https://pokeapi.co/api/v2'
 
 const exists = (p: URL) => access(p).then(() => true, () => false)
@@ -21,6 +22,7 @@ async function get(url: string, to: URL, as: 'json' | 'bytes') {
 }
 
 await mkdir(new URL('sprites/shiny/', RAW), { recursive: true })
+await mkdir(new URL('icons/', RAW), { recursive: true })
 await mkdir(new URL('species/', RAW), { recursive: true })
 await mkdir(new URL('pokemon/', RAW), { recursive: true })
 await mkdir(new URL('chains/', RAW), { recursive: true })
@@ -28,6 +30,7 @@ await mkdir(new URL('chains/', RAW), { recursive: true })
 for (let id = 1; id <= 151; id++) {
   await get(`${SPRITES}/${id}.png`, new URL(`sprites/${id}.png`, RAW), 'bytes')
   await get(`${SPRITES}/shiny/${id}.png`, new URL(`sprites/shiny/${id}.png`, RAW), 'bytes')
+  await get(`${ICONS}/${id}.png`, new URL(`icons/${id}.png`, RAW), 'bytes')
   await get(`${API}/pokemon-species/${id}/`, new URL(`species/${id}.json`, RAW), 'json')
   await get(`${API}/pokemon/${id}/`, new URL(`pokemon/${id}.json`, RAW), 'json')
   const species = JSON.parse(await readFile(new URL(`species/${id}.json`, RAW), 'utf8'))

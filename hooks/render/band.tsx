@@ -1,12 +1,10 @@
-import type { EngineInterface, Elements, RenderInput } from 'claude-code'
+import type { Elements } from 'claude-code'
 import { COMPACT_MIN_COLUMNS } from '../config'
 import { species } from '../data/dex'
 import type { Save } from '../state'
-import { expBar, pickScale, spriteRows, TYPE_COLOR } from './sprite'
+import { expBar, pickArt, spriteRows, TYPE_COLOR } from './sprite'
 
-export type BandView = { save: Save; bubble: string | null; showFull: boolean; evolving: boolean; isFlash: boolean }
-
-export type BandInput = RenderInput<'AbovePrompt', 'terminal' | 'desktop'>
+export type BandView = { save: Save; bubble: string | null; showFull: boolean; evolving: boolean }
 
 export type BandElements = Pick<Elements['terminal'], 'Box' | 'Text'>
 
@@ -27,9 +25,9 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
     </Box>
   )
   if (!view.showFull) return line
-  const scale = pickScale(sp.sprite, maxRows, columns, view.isFlash)
-  if (scale === null) return line
-  const rows = spriteRows(sp.sprite, save.isShiny, scale)
+  const art = pickArt(sp, maxRows, columns)
+  if (art === null) return line
+  const rows = spriteRows(sp[art], save.isShiny)
   return (
     <Box flexDirection="column">
       {rows.map((runs, y) => (
@@ -40,9 +38,4 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
       {line}
     </Box>
   )
-}
-
-export function Band(props: { $: EngineInterface; e: BandInput; view: BandView }) {
-  const { $, e, view } = props
-  return band($.ui.resolve(e), view, e.props.maxRows, e.props.bodyColumns)
 }

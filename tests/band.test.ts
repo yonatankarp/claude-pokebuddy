@@ -3,6 +3,7 @@ import type { RenderElement, RenderNode } from 'claude-code'
 import { band, type BandElements, type BandView } from '../hooks/render/band'
 import { species } from '../hooks/data/dex'
 import { freshSave } from '../hooks/state'
+import { spriteSize } from '../hooks/render/sprite'
 
 type Fake = { children?: unknown }
 const make = (type: 'Box' | 'Text') => (props: Fake): RenderElement => ({
@@ -18,7 +19,7 @@ function texts(n: unknown): string {
 }
 
 const save = freshSave([1, 2, 3, 4])
-const view = (over: Partial<BandView> = {}): BandView => ({ save, bubble: 'hello there', showFull: true, evolving: false, isFlash: false, ...over })
+const view = (over: Partial<BandView> = {}): BandView => ({ save, bubble: 'hello there', showFull: true, evolving: false, ...over })
 
 describe('band', () => {
   test('maxRows 1 draws the single line without a sprite', () => {
@@ -33,6 +34,12 @@ describe('band', () => {
   })
   test('showFull with room draws sprite rows above the line', () => {
     expect(texts(band(els, view(), 100, 200))).toMatch(/[▀▄]/)
+  })
+  test('the sprite at 1:1 when it fits, the icon when only that fits', () => {
+    const sp = species(save.species)
+    const rows = (maxRows: number) => ((band(els, view(), maxRows, 200) as { children?: unknown[] }).children ?? []).length - 1
+    expect(rows(100)).toBe(spriteSize(sp.sprite).rows)
+    expect(rows(spriteSize(sp.sprite).rows)).toBe(spriteSize(sp.icon).rows)
   })
   test('evolving shows the old species name', () => {
     const out = texts(band(els, view({ evolving: true, showFull: false }), 1, 120))

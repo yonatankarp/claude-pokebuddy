@@ -22,5 +22,8 @@ export type Species = {
   growth: Growth
   evolvesFrom: number | null
   evolutions: readonly Evolution[]
+  /** The Crystal battle sprite. */
   sprite: Sprite
+  /** The Gen 7 menu icon (40x30 before cropping), for bands too short for the sprite. */
+  icon: Sprite
 }

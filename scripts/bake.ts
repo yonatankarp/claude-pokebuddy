@@ -3,7 +3,7 @@ import { PNG } from 'pngjs'
 import { base64Encode } from '../hooks/codec.ts'
 import type { Growth, Species } from '../hooks/data/types.ts'
 import { evolutionsFrom, evolvesFromId, type ChainLink } from './gen1.ts'
-import { cropAndIndex, cropOffset, packNibbles, shinyPalette } from './pack.ts'
+import { cropAndIndex, cropOffset, iconShinyPalette, packNibbles, shinyPalette } from './pack.ts'
 
 const RAW = new URL('./raw/', import.meta.url)
 const json = async (p: string) => JSON.parse(await readFile(new URL(p, RAW), 'utf8'))
@@ -25,6 +25,9 @@ for (let id = 1; id <= 151; id++) {
   const shiny = await png(`sprites/shiny/${id}.png`)
   const indexed = cropAndIndex(new Uint8Array(normal.data), normal.width, normal.height)
   const off = cropOffset(new Uint8Array(normal.data), normal.width, normal.height)
+  const iconPng = await png(`icons/${id}.png`)
+  const icon = cropAndIndex(new Uint8Array(iconPng.data), iconPng.width, iconPng.height)
+  const crystalShiny = shinyPalette(indexed, new Uint8Array(shiny.data), shiny.width, shiny.height, off.x, off.y)
   const flavour = species.flavor_text_entries.find((f: any) => f.language.name === 'en' && f.version.name === 'crystal')
     ?? species.flavor_text_entries.find((f: any) => f.language.name === 'en')
   const growth = GROWTH[species.growth_rate.name]
@@ -44,7 +47,13 @@ for (let id = 1; id <= 151; id++) {
       w: indexed.w, h: indexed.h,
       px: base64Encode(packNibbles(indexed.indexes)),
       palette: indexed.palette,
-      shiny: shinyPalette(indexed, new Uint8Array(shiny.data), shiny.width, shiny.height, off.x, off.y),
+      shiny: crystalShiny,
+    },
+    icon: {
+      w: icon.w, h: icon.h,
+      px: base64Encode(packNibbles(icon.indexes)),
+      palette: icon.palette,
+      shiny: iconShinyPalette(icon.palette, indexed.palette, crystalShiny),
     },
   })
 }

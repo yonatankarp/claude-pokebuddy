@@ -18,7 +18,7 @@ export function freshSave(seed: number[]): Save {
     version: 1, seed, species: roll.species, isShiny: roll.isShiny, personality: roll.personality,
     nickname: null, level: START_LEVEL, exp, lifetimeExp: 0, expBySource: {}, bag: {},
     counters: { greens: 0, commits: 0, configEdits: 0, feedRun: 0 }, checks: {},
-    lastMoonDate: null, feed: { lastDate: null }, pendingLog: [], speechOn: true, view: 'compact',
+    lastMoonDate: null, feed: { lastDate: null }, pendingLog: [], speechOn: true, view: 'full',
     evolution: null, cancelledAtLevel: null,
   }
 }

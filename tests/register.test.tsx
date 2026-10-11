@@ -176,7 +176,7 @@ describe('register', () => {
     const after = store.get('save') as { nickname: string; lifetimeExp: number; view: string }
     expect(after.nickname).toBe('Other')
     expect(after.lifetimeExp).toBe(999)
-    expect(after.view).toBe('full')
+    expect(after.view).toBe('compact')
   })
 
   test('a save stuck mid-evolution is finished on load', async ($, on) => {

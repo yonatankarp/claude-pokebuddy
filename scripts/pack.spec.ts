@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cropAndIndex, packNibbles } from './pack.ts'
+import { cropAndIndex, iconShinyPalette, packNibbles } from './pack.ts'
 
 test('packNibbles puts two pixels per byte, high nibble first', () => {
   assert.deepEqual(Array.from(packNibbles([1, 2, 3])), [0x12, 0x30])
@@ -28,4 +28,15 @@ test('cropAndIndex refuses more than 15 colours', () => {
   const rgba = new Uint8Array(w * h * 4)
   for (let x = 0; x < 16; x++) rgba.set([x * 10, 0, 0, 255], x * 4)
   assert.throws(() => cropAndIndex(rgba, w, h), /more than 15 colours/)
+})
+
+test('iconShinyPalette shifts each icon colour by its nearest Crystal colour\'s shiny delta', () => {
+  const crystal = ['', '#f80000', '#0000f8']
+  const crystalShiny = ['', '#f8f800', '#00f8f8']
+  // near red: +248 green; near blue: +248 green; clamped at 255
+  assert.deepEqual(iconShinyPalette(['', '#e01010', '#1010e0', '#10f010'], crystal, crystalShiny), ['', '#e0ff10', '#10ffe0', '#10ff10'])
+})
+
+test('iconShinyPalette keeps index 0 transparent and ignores it when matching', () => {
+  assert.deepEqual(iconShinyPalette(['', '#000000'], ['', '#101010'], ['', '#202020']), ['', '#101010'])
 })

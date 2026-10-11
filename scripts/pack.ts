@@ -56,3 +56,25 @@ export function cropOffset(rgba: Uint8Array, w: number, h: number): { x: number;
   }
   return { x: x0, y: y0 }
 }
+
+const rgb = (c: string) => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)) as [number, number, number]
+
+/**
+ * A shiny palette for an icon that has no shiny art of its own: each icon colour takes the shiny shift
+ * (shiny minus normal) of the nearest colour in the species' Crystal palette, clamped to 0..255.
+ */
+export function iconShinyPalette(icon: readonly string[], crystal: readonly string[], crystalShiny: readonly string[]): string[] {
+  return icon.map((c, k) => {
+    if (k === 0) return ''
+    const [r, g, b] = rgb(c)
+    let best = 1, bestD = Infinity
+    for (let j = 1; j < crystal.length; j++) {
+      const [cr, cg, cb] = rgb(crystal[j]!)
+      const d = (r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2
+      if (d < bestD) { bestD = d; best = j }
+    }
+    const from = rgb(crystal[best]!), to = rgb(crystalShiny[best]!)
+    const clamp = (v: number) => Math.max(0, Math.min(255, v))
+    return hex(clamp(r + to[0] - from[0]), clamp(g + to[1] - from[1]), clamp(b + to[2] - from[2]))
+  })
+}

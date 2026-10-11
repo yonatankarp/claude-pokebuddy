@@ -300,7 +300,6 @@ export const register: Register = (on, options) => {
       bubble: await read($, bubbleAtom),
       showFull: save.view === 'full' || isFlash,
       evolving: save.evolution !== null,
-      isFlash: isFlash && save.view !== 'full',
     }
     return band($.ui.resolve(e), view, e.props.maxRows, e.props.bodyColumns)
   })

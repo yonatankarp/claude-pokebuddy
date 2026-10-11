@@ -1,6 +1,6 @@
 import { base64Decode } from '../codec'
 import { species } from '../data/dex'
-import type { PokemonType, Sprite } from '../data/types'
+import type { PokemonType, Species, Sprite } from '../data/types'
 import { expForLevel, MAX_LEVEL } from '../exp'
 import type { Save } from '../state'
 
@@ -18,18 +18,18 @@ function indexes(sprite: Sprite): number[] {
   return out
 }
 
-export function spriteSize(sprite: Sprite, scale: 1 | 2) {
-  const w = Math.ceil(sprite.w / scale), h = Math.ceil(sprite.h / scale)
-  return { rows: Math.ceil(h / 2), cols: w }
+/** Terminal cells the sprite takes at 1:1: one column per pixel, two pixel rows per text row. */
+export function spriteSize(sprite: Sprite) {
+  return { rows: Math.ceil(sprite.h / 2), cols: sprite.w }
 }
 
-export function spriteRows(sprite: Sprite, isShiny: boolean, scale: 1 | 2): Run[][] {
+export function spriteRows(sprite: Sprite, isShiny: boolean): Run[][] {
   const px = indexes(sprite)
   const pal = isShiny ? sprite.shiny : sprite.palette
-  const w = Math.ceil(sprite.w / scale), h = Math.ceil(sprite.h / scale)
+  const w = sprite.w, h = sprite.h
   const at = (x: number, y: number): string => {
     if (y >= h) return ''
-    const k = px[y * scale * sprite.w + x * scale] ?? 0
+    const k = px[y * w + x] ?? 0
     return k === 0 ? '' : (pal[k] ?? '')
   }
   const rows: Run[][] = []
@@ -50,14 +50,13 @@ export function spriteRows(sprite: Sprite, isShiny: boolean, scale: 1 | 2): Run[
   return rows
 }
 
-/** Rows reserved below the sprite: the one-row compact line plus one spare row so the band never fills maxRows exactly. */
-const CHROME_ROWS = 2
+export type Art = 'sprite' | 'icon'
 
-export function pickScale(sprite: Sprite, maxRows: number, columns: number, isFlash: boolean): 1 | 2 | null {
-  const scales: (1 | 2)[] = isFlash ? [2] : [1, 2]
-  for (const scale of scales) {
-    const { rows, cols } = spriteSize(sprite, scale)
-    if (rows + CHROME_ROWS <= maxRows && cols <= columns) return scale
+/** The art to draw above the one-row compact line, never scaled: the Crystal sprite, else the menu icon, else none. */
+export function pickArt(sp: Species, maxRows: number, columns: number): Art | null {
+  for (const art of ['sprite', 'icon'] as const) {
+    const { rows, cols } = spriteSize(sp[art])
+    if (rows + 1 <= maxRows && cols <= columns) return art
   }
   return null
 }

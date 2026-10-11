@@ -11,6 +11,7 @@ describe('save', () => {
     expect(s.level).toBe(5)
     expect(s.exp > 0).toBe(true)
     expect(s.version).toBe(1)
+    expect(s.view).toBe('full')
   })
   test('parse: empty, ok, future, corrupt', () => {
     expect(parseSave(undefined).kind).toBe('empty')
