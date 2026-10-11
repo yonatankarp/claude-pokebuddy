@@ -12,6 +12,8 @@ let modelCalls: string[] = []
 let modelReply = '42'
 /** Runs while the model answers, before the reply comes back. */
 let whileModelAnswers: (() => Promise<unknown>) | null = null
+/** The app clients attached to the session, as `$.session.surfaces()` reports them. */
+let surfaces: ('terminal' | 'desktop' | 'mobile' | 'vscode')[] = []
 
 const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
 
@@ -24,6 +26,9 @@ function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
   const store = new Map<string, unknown>(Object.entries(entries).map(([k, v]) => [k, copy(v)]))
   toasts = []
   modelCalls = []
+  surfaces = []
+  on('session.surfaces', async () => ({ value: surfaces }))
+  on('session.attach', async (_$, e) => { surfaces = [...surfaces, e.surface]; return { clientId: e.clientId } })
   on('store.get', async (_$, e) => ({ value: copy(store.get(e.key)) }))
   on('store.set', async (_$, e) => { store.set(e.key, copy(e.value)); return { value: undefined } })
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
@@ -500,6 +505,7 @@ describe('register', () => {
     expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'task-notification' } })).toBe(false)
     expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'scheduled-trigger' } })).toBe(false)
     expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'sdk' } })).toBe(false)
+    expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'sdk' } }, true)).toBe(true)
     expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'composer' } })).toBe(true)
     expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'bridge' } })).toBe(true)
   })
@@ -908,6 +914,32 @@ describe('register', () => {
       }
     })
   }
+
+  test('a desktop session, an SDK host with the app attached after start, earns, logs and speaks', async ($, on) => {
+    const store = world(on, { save: pika() })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    modelReply = 'Pika, from the desktop'
+    try {
+      await start($, false)
+      await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' })
+      await $.prompt.submit({ text: 'fix it', wait: false, origin: { kind: 'sdk' } })
+      await endTurn($)
+      await clock.advance(1)
+      const saved = store.get('save') as Stored
+      expect(saved.expBySource.prompt).toBeGreaterThan(0)
+      expect(saved.pendingLog).toHaveLength(1)
+      const ui = await $.ui.mount({
+        plugin: 'pokebuddy', surface: 'desktop', component: 'AbovePrompt',
+        props: { hasSurvey: false, isWorking: false, maxRows: 60, bodyColumns: 195, scroll: { offset: 0, bodyRows: 60 }, view: {} },
+        viewport: { columns: 200, rows: 60 },
+      })
+      expect(await ui.find({ type: 'Text', text: /from the desktop/ })).toBeDefined()
+      await ui.unmount()
+    } finally {
+      modelReply = '42'
+    }
+  })
 
   test('the full band draws its art as an Svg on desktop and as half-blocks in the terminal', async ($, on) => {
     world(on, { save: { ...pika(), view: 'full' as const } })

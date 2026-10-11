@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2 (2026-10-11)
+
+- The Claude desktop app and the editor count as a person watching: the buddy now speaks, earns EXP, logs turns and judges past sessions there. They host the session through the SDK, so it used to be treated like a headless `-p` run.
+
 ## 1.0.1 (2026-10-11)
 
 - The sprite draws as crisp pixel art (SVG) in the Claude desktop app, the editor and mobile, instead of half-block text that broke up there.

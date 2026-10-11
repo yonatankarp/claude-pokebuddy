@@ -37,9 +37,18 @@ export function shouldHandleTurn(e: { agentId?: string; isAborted: boolean }): b
   return e.agentId === undefined
 }
 
-/** Only the person's own typing earns prompt EXP: at the terminal or through the Remote Control bridge. */
-export function countsAsPrompt(e: { text: string; origin: PromptOrigin }): boolean {
-  return (e.origin.kind === 'composer' || e.origin.kind === 'bridge') && !e.text.trimStart().startsWith('/')
+/**
+ * Only the person's own typing earns prompt EXP: at the terminal, through the Remote Control bridge, or in an
+ * app (desktop, editor) that hosts the session through the SDK, which counts once a client has attached.
+ */
+export function countsAsPrompt(e: { text: string; origin: PromptOrigin }, isAttached = false): boolean {
+  const kind = e.origin.kind
+  return (kind === 'composer' || kind === 'bridge' || (kind === 'sdk' && isAttached)) && !e.text.trimStart().startsWith('/')
+}
+
+/** Whether an app (desktop, editor, phone) draws this session: a person is watching there. */
+async function hasAppClient($: EngineInterface): Promise<boolean> {
+  return (await $.session.surfaces()).some(s => s !== 'terminal')
 }
 
 /** Calls the permission check denied: they reach tool.call as errors, which are not failures. */
@@ -178,6 +187,30 @@ function commandIO($: EngineInterface, isInteractive: boolean): CommandIO {
   }
 }
 
+/** Takes the ended sessions' lines and scores them in the background. */
+async function judgeEnded($: EngineInterface, model: string, loaded: Save | null) {
+  // Take the ended sessions' lines first, then score them, so no other session judges them again.
+  // A running session's lines stay, this one's included. Quiet means no model calls: they are dropped.
+  const sid = await $.session.id()
+  const now = await $.clock.now()
+  let taken: string[] = []
+  if (loaded && (loaded.finishedSessions.length > 0 || takeEnded(loaded.pendingLog, [], sid, now).taken.length > 0)) {
+    await mutate($, s => {
+      const ended = takeEnded(s.pendingLog, s.finishedSessions, sid, now)
+      if (s.speechOn) taken = ended.taken
+      return { save: { ...s, pendingLog: ended.log, finishedSessions: [] } }
+    })
+  }
+  if (taken.length > 0) {
+    $.clock.after(0, async () => {
+      const score = await judge(clients($), model, taken)
+      if (score === null) return
+      await mutate($, s => applyExp(s, { judge: score }))
+      $.ui.toast(`Last session judged ${score}/100: +${score} EXP`)
+    })
+  }
+}
+
 /** What the band draws at this moment; null with no save to draw. */
 async function drawView($: EngineInterface): Promise<BandView | null> {
   const save = await read($, saveAtom)
@@ -196,34 +229,26 @@ export const register: Register = (on, options) => {
   let lastWindow = -1
   // Until a session.start says otherwise (a reload may not raise one), assume a person is there.
   let isInteractive = true
+  // Once per session: a phone attaching to a terminal session does not judge again.
+  let isJudgeDone = false
+
 
   on('session.start', async ($, e, next) => {
     blocked.isToasted = false
-    isInteractive = e.isInteractive
+    isInteractive = e.isInteractive || await hasAppClient($)
+    isJudgeDone = false
     await $.command.register({ name: 'buddy', description: 'Your Gen 1 Pokémon buddy: stats, dex, feed, evolve' })
     // A reload or exit inside the evolution window drops its timer; finish it now.
     const loaded = await mutate($, s => (s.evolution ? finishEvolution(s) : { save: s }))
-    if (!isInteractive) return next(e)
-    // Take the ended sessions' lines first, then score them, so no other session judges them again.
-    // A running session's lines stay, this one's included. Quiet means no model calls: they are dropped.
-    const sid = await $.session.id()
-    const now = await $.clock.now()
-    let taken: string[] = []
-    if (loaded && (loaded.save.finishedSessions.length > 0 || takeEnded(loaded.save.pendingLog, [], sid, now).taken.length > 0)) {
-      await mutate($, s => {
-        const ended = takeEnded(s.pendingLog, s.finishedSessions, sid, now)
-        if (s.speechOn) taken = ended.taken
-        return { save: { ...s, pendingLog: ended.log, finishedSessions: [] } }
-      })
-    }
-    if (taken.length > 0) {
-      $.clock.after(0, async () => {
-        const score = await judge(clients($), model, taken)
-        if (score === null) return
-        await mutate($, s => applyExp(s, { judge: score }))
-        $.ui.toast(`Last session judged ${score}/100: +${score} EXP`)
-      })
-    }
+    if (isInteractive) { isJudgeDone = true; await judgeEnded($, model, loaded?.save ?? null) }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // The desktop app, the editor and the phone run the session as an SDK host and attach afterwards:
+  // a client attaching means a person is watching, so the session counts as interactive from then on.
+  on('session.attach', async ($, e, next) => {
+    isInteractive = true
+    if (!isJudgeDone) { isJudgeDone = true; await judgeEnded($, model, await loadFresh($)) }
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -240,7 +265,7 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   on('prompt.submit', async ($, e, next) => {
-    if (countsAsPrompt(e)) {
+    if (countsAsPrompt(e, e.origin.kind === 'sdk' && await hasAppClient($))) {
       tally.prompts++
       // The turn's first prompt: one typed while the turn runs waits in the queue and is not this turn's.
       turnPrompt ??= e.text.slice(0, EXCERPT_MAX)
