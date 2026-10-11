@@ -7,7 +7,8 @@ A Gen 1 Pokémon lives above your Claude Code prompt, reacts to each turn in a l
 ## Install
 
 ```
-/plugin install pokebuddy --marketplace yonatankarp/pokebuddy
+/plugin marketplace add yonatankarp/pokebuddy
+/plugin install pokebuddy@pokebuddy
 ```
 
 It is active at once. Ignore any "2 userConfig options not yet set" note: both settings have defaults. Needs Claude Code 2.1.296 or newer.
