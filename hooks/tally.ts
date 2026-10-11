@@ -9,6 +9,9 @@ export type Tally = { prompts: number; signals: Signal[]; activeWindows: number 
 export const emptyTally = (): Tally => ({ prompts: 0, signals: [], activeWindows: 0 })
 export type Checks = Readonly<Record<string, boolean>>
 
+/** The tally of an interrupted turn: a check cut short is not a failure. */
+export const withoutReds = (t: Tally): Tally => ({ ...t, signals: t.signals.filter(s => s.kind !== 'check' || s.ok) })
+
 export function scoreTally(t: Tally, checks: Checks) {
   const by: Partial<Record<Source, number>> = {}
   const add = (s: Source, n: number) => { if (n > 0) by[s] = (by[s] ?? 0) + n }

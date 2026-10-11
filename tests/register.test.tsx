@@ -21,7 +21,7 @@ const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stri
  * `store` noun, so the test keeps the map to read what the mod wrote), the session's start,
  * command registration and toasts.
  */
-function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
+function world(on: On, entries: Record<string, unknown> = {}, sid: string | null = 'S1') {
   const store = new Map<string, unknown>(Object.entries(entries).map(([k, v]) => [k, copy(v)]))
   toasts = []
   redraws = 0
@@ -29,7 +29,10 @@ function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
   on('store.get', async (_$, e) => ({ value: copy(store.get(e.key)) }))
   on('store.set', async (_$, e) => { store.set(e.key, copy(e.value)); return { value: undefined } })
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
-  on('session.id', async () => ({ value: sid }))
+  on('session.id', async () => {
+    if (sid === null) throw new Error('no session id')
+    return { value: sid }
+  })
   on('model.complete', async (_$, e) => {
     modelCalls.push(e.prompt)
     return { value: { isAnswered: true as const, text: modelReply, usage } }
@@ -112,6 +115,10 @@ describe('register', () => {
     await start($)
     await $.command.run(run('stats'))
     expect(store.get('save.bak')).toEqual(good)
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]).toMatch(/previous backup in save\.bak was kept; the damaged save was left in place/)
+    expect(toasts[0]).not.toMatch(/It was kept in save\.bak/)
+    expect(toasts[0]).toMatch(/\/buddy restore or \/buddy reset/)
   })
 
   test('restore swaps a valid backup in and keeps the current raw as save.bak', async ($, on) => {
@@ -262,6 +269,76 @@ describe('register', () => {
     const after = store.get('save') as Stored
     expect(after.species).toBe(5)
     expect(after.evolution).toBe(null)
+  })
+
+  /** A loop where the calls named in `failing` fail, and the permission check denies those in `denied`. */
+  function checks(on: On, failing: string[], denied: string[] = []) {
+    on('prompt.submit', async (_$, e) => ({ text: e.text }))
+    on('tool.check', async (_$, e) => ({ decision: denied.includes(String(e.tool_use_id)) ? 'deny' as const : 'allow' as const }))
+    on('tool.call', async (_$, e) => failing.includes(e.tool_use_id)
+      ? { result: 'Error: Exit code 1', text: 'Exit code 1', isError: true as const }
+      : { result: 'ok', text: 'ok' })
+    on('turn.complete', async (_$, e) => ({ text: e.answer }))
+  }
+  const npmTest = async ($: Engine, id: string) => {
+    await $.tool.check({ tool: 'Bash', input: { command: 'npm test' }, tool_use_id: id })
+    await $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: id })
+  }
+
+  test('a failing check then a passing one earns green EXP', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    checks(on, ['red'])
+    mock.clock(on, { now: NOON })
+    await start($)
+    await npmTest($, 'red')
+    await endTurn($)
+    await npmTest($, 'green')
+    await endTurn($)
+    expect((store.get('save') as Stored).expBySource.green).toBe(40)
+  })
+
+  test('a check the permission check denied is no red', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    checks(on, ['red'], ['red'])
+    mock.clock(on, { now: NOON })
+    await start($)
+    await npmTest($, 'red')
+    await endTurn($)
+    await npmTest($, 'green')
+    await endTurn($)
+    expect((store.get('save') as Stored).expBySource.green).toBeUndefined()
+  })
+
+  test('an interrupted turn drops its red checks and keeps the rest', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    checks(on, ['red'])
+    mock.clock(on, { now: NOON })
+    await start($)
+    await npmTest($, 'red')
+    await $.turn.complete({ answer: '', durationMs: 1, isAborted: true, turnId: 't1', reason: 'answer' })
+    expect((store.get('save') as Stored).expBySource.tool).toBe(2)
+    await npmTest($, 'green')
+    await endTurn($)
+    expect((store.get('save') as Stored).expBySource.green).toBeUndefined()
+  })
+
+  test('a session start that throws still lets the session start', async ($, on) => {
+    world(on, { save: freshSave([1, 2, 3, 4]) }, null)
+    mock.clock(on, { now: NOON })
+    expect(await start($)).toEqual({ cwd: '/' })
+  })
+
+  test('a v1 save with more than 100 failing checks loads, keeping the newest 100', async ($, on) => {
+    const checks = Object.fromEntries(Array.from({ length: 130 }, (_, i) => [`check ${i}`, true]))
+    const store = world(on, { save: { ...freshSave([1, 2, 3, 4]), checks } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    const r = await $.command.run(run('stats'))
+    expect(r.text).not.toMatch(/could not be read/)
+    const kept = Object.keys((store.get('save') as { checks: Record<string, boolean> }).checks)
+    expect(kept).toHaveLength(100)
+    expect(kept[0]).toBe('check 30')
+    expect(kept[99]).toBe('check 129')
   })
 
   test('the command name the hooks spell literally is COMMAND', () => {

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PromptOrigin, Register, Timer, ToolCallResult } from 'claude-code'
 import { dexText, helpText, parseArgs, parseStone, statsText } from './commands'
-import { COMMAND, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX, TICK_MS } from './config'
+import { COMMAND, DENIED_MAX, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX, TICK_MS } from './config'
 import { findSpecies, species } from './data/dex'
 import { applyExp, applyTurn, cancelEvolution, feed, finishEvolution, useStone, type GameEvent } from './game'
 import { judge, lineFacts, lineSession, tagLine } from './judge'
@@ -12,7 +12,7 @@ import { artSize } from './render/sprite'
 import { signalsFromTool, type Outcome } from './signals'
 import { speak, turnFacts } from './speech'
 import { exportBlob, freshSave, importBlob, parseSave, type Save } from './state'
-import { emptyTally, scoreTally, type Tally } from './tally'
+import { emptyTally, scoreTally, withoutReds, type Tally } from './tally'
 
 const saveAtom = atom({ plugin: 'pokebuddy', key: 'save' } as const, null)
 const bubbleAtom = atom({ plugin: 'pokebuddy', key: 'bubble' } as const, null)
@@ -21,6 +21,7 @@ const flashAtom = atom({ plugin: 'pokebuddy', key: 'flashUntil' } as const, 0)
 const WINDOW_MS = 10 * 60 * 1000
 const READ_ONLY = 'Your pokebuddy save is from a newer version of the mod. Update the mod; nothing was changed.'
 const CORRUPT = 'Your pokebuddy save could not be read. It was kept in save.bak. Run /buddy restore or /buddy reset.'
+const CORRUPT_BAK_KEPT = 'Your pokebuddy save could not be read. Your previous backup in save.bak was kept; the damaged save was left in place. Run /buddy restore or /buddy reset.'
 
 /** Why the save cannot be used this session (null when it can), and whether the person was told. */
 const blocked: { reason: string | null; isToasted: boolean } = { reason: null, isToasted: false }
@@ -36,8 +37,15 @@ export function countsAsPrompt(e: { text: string; origin: PromptOrigin }): boole
   return (e.origin.kind === 'composer' || e.origin.kind === 'bridge') && !e.text.trimStart().startsWith('/')
 }
 
-function outcome(ran: ToolCallResult): Outcome {
-  if (ran.deny !== undefined) return 'unknown'
+/** Calls the permission check denied: they reach tool.call as errors, which are not failures. */
+const denied = new Set<string>()
+function markDenied(id: string) {
+  denied.add(id)
+  if (denied.size > DENIED_MAX) denied.delete(denied.values().next().value!)
+}
+
+function outcome(ran: ToolCallResult, id: string): Outcome {
+  if (ran.deny !== undefined || denied.has(id)) return 'unknown'
   return ran.isError === true ? 'failed' : 'ok'
 }
 
@@ -72,8 +80,8 @@ async function loadFresh($: EngineInterface): Promise<Save | null> {
     blocked.reason = null
     return save
   }
-  if (parsed.kind === 'corrupt') await backUp($, raw)
-  blocked.reason = parsed.kind === 'future' ? READ_ONLY : CORRUPT
+  if (parsed.kind === 'future') blocked.reason = READ_ONLY
+  else blocked.reason = (await backUp($, raw)) ? CORRUPT : CORRUPT_BAK_KEPT
   if (!blocked.isToasted) {
     blocked.isToasted = true
     $.ui.toast(blocked.reason)
@@ -190,7 +198,7 @@ export const register: Register = (on, options) => {
       })
     }
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   on('prompt.submit', async ($, e, next) => {
     if (countsAsPrompt(e)) {
@@ -201,10 +209,16 @@ export const register: Register = (on, options) => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
+  on('tool.check', async ($, e, next) => {
+    const verdict = await next(e)
+    if (verdict.decision === 'deny' && e.tool_use_id !== undefined) markDenied(e.tool_use_id)
+    return verdict
+  }).catch(($, e, next) => next(e))
+
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     try {
-      tally.signals.push(...signalsFromTool(String(e.tool), e as unknown as Record<string, unknown>, outcome(ran)))
+      tally.signals.push(...signalsFromTool(String(e.tool), e as unknown as Record<string, unknown>, outcome(ran, e.tool_use_id)))
     } catch {}
     return ran
   }).catch(($, e, next) => next(e))
@@ -212,7 +226,7 @@ export const register: Register = (on, options) => {
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     if (!shouldHandleTurn(e)) return result
-    const turn = tally
+    const turn = e.isAborted ? withoutReds(tally) : tally
     tally = emptyTally()
     // A headless run (-p, the SDK) has no one watching: no EXP, no log line, no speech.
     if (!isInteractive) return result

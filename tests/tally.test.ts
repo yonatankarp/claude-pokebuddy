@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { Signal } from '../hooks/signals'
-import { emptyTally, scoreTally } from '../hooks/tally'
+import { emptyTally, scoreTally, withoutReds, type Tally } from '../hooks/tally'
 
 const tool: Signal = { kind: 'tool' }
 
@@ -53,5 +53,9 @@ describe('scoreTally', () => {
     expect(r.checks.k1).toBeUndefined()
     expect(r.checks.k0).toBe(true)
     expect(r.checks.new).toBe(true)
+  })
+  test('withoutReds drops the failed checks only', () => {
+    const t: Tally = { prompts: 1, activeWindows: 1, signals: [{ kind: 'tool' }, { kind: 'check', key: 'npm test', ok: false }, { kind: 'check', key: 'tsc', ok: true }, { kind: 'commit' }] }
+    expect(withoutReds(t)).toEqual({ ...t, signals: [{ kind: 'tool' }, { kind: 'check', key: 'tsc', ok: true }, { kind: 'commit' }] })
   })
 })

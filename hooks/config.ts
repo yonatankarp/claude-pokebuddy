@@ -15,3 +15,5 @@ export const IDLE_REST_MS = 2500
 export const COMPACT_MIN_COLUMNS = 55
 export const PENDING_LOG_MAX = 200
 export const CHECKS_MAX = 100
+// The newest tool calls the permission check denied, remembered so their errors are not failures.
+export const DENIED_MAX = 200

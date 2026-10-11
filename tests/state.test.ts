@@ -95,10 +95,14 @@ describe('save', () => {
     expect(corrupt({ bag: { 'mystery-stone': 'x' } })).toBe('ok')
     expect(corrupt({ expBySource: { bogus: 1 } })).toBe('ok')
   })
-  test('checks hold at most 100 keys', () => {
+  test('more than 100 checks load trimmed to the newest 100, the raw value untouched', () => {
     const many = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`k${i}`, true]))
     expect(corrupt({ checks: many(100) })).toBe('ok')
-    expect(corrupt({ checks: many(101) })).toBe('corrupt')
+    const raw = { ...freshSave([1, 2, 3, 4]), checks: many(101) }
+    const r = parseSave(raw)
+    expect(r.kind).toBe('ok')
+    expect(r.kind === 'ok' && Object.keys(r.save.checks)).toEqual(Object.keys(many(101)).slice(1))
+    expect(Object.keys(raw.checks)).toHaveLength(101)
   })
   test('rejects bad date strings', () => {
     expect(corrupt({ lastMoonDate: 'yesterday' })).toBe('corrupt')

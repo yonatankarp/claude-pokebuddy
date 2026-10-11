@@ -47,7 +47,7 @@ function validSave(raw: Record<string, unknown>): boolean {
   if (!isObj(raw.expBySource) || !Object.entries(raw.expBySource).every(([k, v]) => !SOURCES.includes(k) || isNum(v, 0))) return false
   if (!isObj(raw.bag) || !Object.entries(raw.bag).every(([k, v]) => !(STONES as readonly string[]).includes(k) || isInt(v, 0, Number.MAX_SAFE_INTEGER))) return false
   if (!isObj(raw.counters) || !COUNTERS.every(k => isInt((raw.counters as Record<string, unknown>)[k], 0, Number.MAX_SAFE_INTEGER))) return false
-  if (!isObj(raw.checks) || Object.keys(raw.checks).length > CHECKS_MAX || !Object.values(raw.checks).every(v => typeof v === 'boolean')) return false
+  if (!isObj(raw.checks) || !Object.values(raw.checks).every(v => typeof v === 'boolean')) return false
   if (!isDate(raw.lastMoonDate)) return false
   if (!isObj(raw.feed) || !isDate(raw.feed.lastDate)) return false
   if (!Array.isArray(raw.pendingLog) || raw.pendingLog.length > PENDING_LOG_MAX || !raw.pendingLog.every(x => typeof x === 'string')) return false
@@ -62,7 +62,13 @@ export function parseSave(raw: unknown):
   if (raw === undefined || raw === null) return { kind: 'empty' }
   if (!isObj(raw)) return { kind: 'corrupt' }
   if (typeof raw.version === 'number' && raw.version > SAVE_VERSION) return { kind: 'future', version: raw.version }
-  return validSave(raw) ? { kind: 'ok', save: raw as unknown as Save } : { kind: 'corrupt' }
+  return validSave(raw) ? { kind: 'ok', save: normalise(raw as unknown as Save) } : { kind: 'corrupt' }
+}
+
+/** A save older builds wrote with more than CHECKS_MAX checks keeps the newest (scoreTally adds them last). */
+function normalise(save: Save): Save {
+  const checks = Object.entries(save.checks)
+  return checks.length > CHECKS_MAX ? { ...save, checks: Object.fromEntries(checks.slice(-CHECKS_MAX)) } : save
 }
 
 export function exportBlob(save: Save): string {
