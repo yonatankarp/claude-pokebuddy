@@ -104,7 +104,7 @@ export function bubbleBox({ Box, Text }: BandElements, side: Side) {
         <Text dimColor>◀</Text>
       </Box>
       <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} width={side.width}>
-        {side.lines.map((l, i) => <Text key={`b${i}`}>{l}</Text>)}
+        {side.lines.map((l, i) => <Text key={`b${i}`} wrap="truncate-end">{l}</Text>)}
       </Box>
     </Box>
   )
