@@ -36,7 +36,7 @@ const save = freshSave([1, 2, 3, 4])
 const view = (over: Partial<BandView> = {}): BandView => ({ save, bubble: 'hello there', showFull: true, evolving: false, ...over })
 
 describe('band', () => {
-  test('maxRows 1 draws the single line without a sprite', () => {
+  test('maxRows 1 draws the single line without art', () => {
     const out = band(els, view(), 1, 120)
     expect(texts(out)).toContain(`Lv${save.level}`)
     expect(texts(out)).not.toContain('▀')
@@ -51,7 +51,7 @@ describe('band', () => {
     expect(texts(band(els, view({ showFull: false }), 1, 120))).toContain('“hello there”')
     expect(texts(band(els, chatty, 1, 30))).not.toContain('│')
   })
-  test('showFull with room draws sprite rows above the line', () => {
+  test('showFull with room draws the icon rows above the line', () => {
     expect(texts(band(els, view(), 100, 200))).toMatch(/[▀▄]/)
   })
   test('the icon at 1:1 when it fits, beside the bubble or over the line, else the line alone', () => {
@@ -117,7 +117,7 @@ describe('band', () => {
       }
     }
   })
-  test('the bubble shows in every layout: compact, beside the sprite, under it, beside the icon, the line alone, evolving', () => {
+  test('the bubble shows in every layout: compact, beside the icon, under it, the line alone, evolving', () => {
     const icon = artSize(species(save.species))
     const layouts: [Partial<BandView>, number, number][] = [
       [{ showFull: false }, 1, 120],
