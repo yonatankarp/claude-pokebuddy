@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { describe, expect, mock, test, type Engine } from 'claude-code/testing'
-import { countsAsPrompt, shouldHandleTurn } from '../hooks/register'
-import { COMMAND, EVOLVE_MS, TICK_MS } from '../hooks/config'
+import { countsAsPrompt, isPaneShown, shouldHandleTurn } from '../hooks/register'
+import { COMMAND, EVOLVE_MS, PANE_CHECK_MS, TICK_MS } from '../hooks/config'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
 import { exportBlob, freshSave } from '../hooks/state'
@@ -182,8 +182,7 @@ describe('register', () => {
   test('reset confirm works once per local day', async ($, on) => {
     const store = world(on, { save: freshSave([1, 2, 3, 4]) })
     const clock = mock.clock(on, { now: NOON })
-    // Headless: the commands work the same, and no redraw timer runs while the clock moves a day.
-    await start($, false)
+    await start($)
     const first = await $.command.run(run('reset confirm'))
     expect(first.text).toMatch(/appeared/)
     const rolled = store.get('save') as { seed: number[]; lastResetDate: string | null }
@@ -497,6 +496,98 @@ describe('register', () => {
       const before = redraws
       await clock.advance(TICK_MS * 2 * 3 + 1)
       if (animates) expect(redraws - before >= 3).toBe(true)
+      else expect(redraws - before).toBe(0)
+      await ui.unmount()
+    })
+  }
+
+  /**
+   * `mock.clock` whose `clock.every` answers are counted: one per period the mod's timer asks for.
+   * A second `clock.every` hook is refused, so the count wraps the kit's own.
+   */
+  function countingClock(on: On, now: number) {
+    const timer = { count: 0 }
+    const counting = ((name: string, ...rest: unknown[]) => {
+      if (name === 'clock.every') {
+        const answer = rest.pop() as (...a: unknown[]) => unknown
+        rest.push((...a: unknown[]) => { timer.count++; return answer(...a) })
+      }
+      return (on as (...a: unknown[]) => unknown)(name, ...rest)
+    }) as On
+    return { clock: mock.clock(counting, { now }), timer }
+  }
+
+  test('the compact view runs no timer at all', async ($, on) => {
+    world(on, { save: pika('compact') })
+    const { clock, timer } = countingClock(on, NOON)
+    await start($)
+    await $.command.run(run('stats'))
+    const ui = await band($)
+    await clock.advance(1000)
+    expect(timer.count).toBe(0)
+    expect(redraws).toBe(0)
+    await ui.unmount()
+  })
+
+  test('the timer starts when the band draws the sprite and stops when it falls back', async ($, on) => {
+    world(on, { save: pika() })
+    const { clock, timer } = countingClock(on, NOON)
+    await start($)
+    await $.command.run(run('stats'))
+    expect(timer.count).toBe(0)
+    const big = await band($)
+    await clock.advance(TICK_MS * 2 * 3 + 1)
+    expect(timer.count >= 3).toBe(true)
+    await big.unmount()
+    const small = await band($, artSize(species(25), 'icon').rows + 1)
+    await clock.advance(1)
+    const after = { periods: timer.count, redraws }
+    await clock.advance(1000)
+    expect(timer.count).toBe(after.periods)
+    expect(redraws).toBe(after.redraws)
+    await small.unmount()
+  })
+
+  test('a headless session runs no timer', async ($, on) => {
+    world(on, { save: pika() })
+    const { clock, timer } = countingClock(on, NOON)
+    await start($, false)
+    await $.command.run(run('stats'))
+    const ui = await band($)
+    await clock.advance(1000)
+    expect(timer.count).toBe(0)
+    await ui.unmount()
+  })
+
+  const shownPane = (isShown: boolean) => ({ id: 'pokebuddy', title: 'PIKACHU', isShown, isFocused: false, isPlaced: true })
+  test('isPaneShown wants the pokebuddy pane listed and shown', () => {
+    expect(isPaneShown([])).toBe(false)
+    expect(isPaneShown([shownPane(false)])).toBe(false)
+    expect(isPaneShown([{ ...shownPane(true), id: 'other' }])).toBe(false)
+    expect(isPaneShown([shownPane(true)])).toBe(true)
+  })
+
+  for (const [name, listed, keeps] of [
+    ['closed without a ui.close', [], false],
+    ['behind another tab', [shownPane(false)], false],
+    ['shown', [shownPane(true)], true],
+  ] as const) {
+    test(`the pane recheck ${keeps ? 'keeps' : 'stops'} redraws when the pane is ${name}`, async ($, on) => {
+      world(on, { save: pika('compact') })
+      on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+      on('ui.panes', async () => ({ value: listed }))
+      const clock = mock.clock(on, { now: NOON })
+      await start($)
+      await $.command.run(run('pane'))
+      const ui = await $.ui.mount({
+        plugin: 'pokebuddy', surface: 'terminal', component: 'Pane', requestId: 'pokebuddy',
+        props: { title: 'PIKACHU', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
+        viewport: { columns: 200, rows: 50 },
+      })
+      await clock.advance(PANE_CHECK_MS + TICK_MS * 2 + 1)
+      const before = redraws
+      await clock.advance(1000)
+      if (keeps) expect(redraws - before >= 3).toBe(true)
       else expect(redraws - before).toBe(0)
       await ui.unmount()
     })

@@ -8,6 +8,8 @@ export const EVOLVE_MS = 4000
 // One Crystal animation tick: the game steps its pic animations every other 60 Hz frame.
 // Tunable: raise it to slow the animations down, lower it to speed them up.
 export const TICK_MS = (1000 / 60) * 2
+// While the redraw timer runs for the pane, how often it asks whether the pane is still shown.
+export const PANE_CHECK_MS = 2000
 // How long the idle animation rests on frame 0 before it plays again.
 export const IDLE_REST_MS = 2500
 // Compared with AbovePrompt's bodyColumns, which is the terminal width less the prompt's margins
