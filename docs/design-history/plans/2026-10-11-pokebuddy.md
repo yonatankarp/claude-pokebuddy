@@ -1,5 +1,7 @@
 # claude-pokebuddy Implementation Plan
 
+> Historical: written before the first release and superseded by the code, `README.md` and `CONTRIBUTING.md`. Names, paths (the plugin now lives in `plugin/`) and privacy behaviour here are out of date.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A shareable Claude Code mod that shows a Gen 1 Pokémon above the prompt which earns EXP from real work, levels up and evolves.
@@ -21,7 +23,7 @@
 - Trade evolutions on a successful push or PR at level 36 or higher. Stone evolutions only through `/buddy use`.
 - Speech model default `haiku` (alias, a `userConfig` option `speechModel`), 4000 ms timeout, never blocks a turn. The spec's `claude-haiku-5-5` is replaced by the alias so the mod tracks the cheapest Haiku.
 - `$.store` key `save`, schema `version: 1`; total store under 4 MiB.
-- Commits use the repo-local identity `Yonatan Karp-Rudin <yonvata@gmail.com>`; never the work address. Every commit message ends with a blank line and `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`; the `git commit -m` lines below omit it for brevity and must have it added.
+- Commits use the repo-local identity. Every commit message ends with a blank line and `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`; the `git commit -m` lines below omit it for brevity and must have it added.
 - Several Claude Code sessions may run at once and share one `$.store`. Every change to the save reads it fresh from the store, applies the change and writes it back (`mutate` in Task 11); the `$.state` copy is only what the band draws.
 - Minimum Claude Code version: 2.1.296 (early-access mod API).
 - Writing style for README and user-facing text: no em dashes.
@@ -2983,7 +2985,7 @@ claude plugin test ~/Projects/_private_projects/claude-pokebuddy
 npm run test:scripts
 git log --format='%an <%ae>' | sort -u
 ```
-Expected: all clean; the author list is only `Yonatan Karp-Rudin <yonvata@gmail.com>`.
+Expected: all clean; the author list is only the repo-local identity.
 
 - [ ] **Step 4: Commit**
 
