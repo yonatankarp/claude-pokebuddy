@@ -1,7 +1,9 @@
 import { CHECKS_MAX } from './config'
 import type { Signal } from './signals'
 
-export type Source = 'prompt' | 'tool' | 'active' | 'config' | 'commit' | 'push' | 'green' | 'judge' | 'feed'
+/** Where EXP comes from. types/index.d.ts spells the same list for Save (tests/types.test.ts keeps them equal). */
+export const SOURCES = ['prompt', 'tool', 'active', 'config', 'commit', 'push', 'green', 'judge', 'feed'] as const
+export type Source = (typeof SOURCES)[number]
 export const EXP = { prompt: 10, tool: 2, active: 5, config: 25, commit: 30, push: 50, green: 40 } as const
 export const TOOL_CAP = 40
 /** The most of each that one turn counts, for EXP and for the stone counters alike. */

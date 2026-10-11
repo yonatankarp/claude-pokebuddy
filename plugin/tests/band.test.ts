@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { RenderElement, RenderNode } from 'claude-code'
-import { band, bandHasArt, cellWidth, type BandElements, type BandView } from '../hooks/render/band'
+import { band, bandLayout, cellWidth, type BandElements, type BandView } from '../hooks/render/band'
 import { species } from '../hooks/data/dex'
 import { freshSave } from '../hooks/state'
 import { artSize } from '../hooks/render/sprite'
@@ -33,6 +33,7 @@ function height(n: unknown): number {
 const bubbleBox = (n: unknown) => all(n).find(x => x.props?.borderStyle === 'round')
 
 const save = freshSave([1, 2, 3, 4])
+const hasArt = (...a: Parameters<typeof bandLayout>) => bandLayout(...a) !== null
 const view = (over: Partial<BandView> = {}): BandView => ({ save, bubble: 'hello there', showFull: true, evolving: false, ...over })
 
 describe('band', () => {
@@ -56,12 +57,12 @@ describe('band', () => {
   })
   test('the icon at 1:1 when it fits, beside the bubble or over the line, else the line alone', () => {
     const icon = artSize(species(save.species))
-    expect(bandHasArt(view(), 100, 200, true)).toBe(true)
-    expect(bandHasArt(view(), icon.rows + 1, icon.cols, true)).toBe(true)
+    expect(hasArt(view(), 100, 200, true)).toBe(true)
+    expect(hasArt(view(), icon.rows + 1, icon.cols, true)).toBe(true)
     expect(height(band(els, view(), icon.rows + 1, icon.cols + 29, true))).toBe(icon.rows + 1)
-    expect(bandHasArt(view(), icon.rows, icon.cols + 29, true)).toBe(false)
-    expect(bandHasArt(view(), 100, icon.cols - 1, true)).toBe(false)
-    expect(bandHasArt(view({ showFull: false }), 100, 200, true)).toBe(false)
+    expect(hasArt(view(), icon.rows, icon.cols + 29, true)).toBe(false)
+    expect(hasArt(view(), 100, icon.cols - 1, true)).toBe(false)
+    expect(hasArt(view({ showFull: false }), 100, 200, true)).toBe(false)
   })
   test('evolving shows the old species name', () => {
     const out = texts(band(els, view({ evolving: true, showFull: false }), 1, 120, true))
@@ -105,7 +106,7 @@ describe('band', () => {
   test('a long line is cut with an ellipsis when the rows are short, and the art stays', () => {
     const out = band(els, view({ bubble: long }), iconRows, 120, true)
     expect(bubbleBox(out)).toBeDefined()
-    expect(bandHasArt(view({ bubble: long }), iconRows, 120, true)).toBe(true)
+    expect(hasArt(view({ bubble: long }), iconRows, 120, true)).toBe(true)
     const short = band(els, view({ bubble: `${long} ${long} ${long}` }), iconRows, 120, true)
     expect(texts(bubbleBox(short))).toMatch(/…$/)
     expect(height(short)).toBe(iconRows)
@@ -128,15 +129,15 @@ describe('band', () => {
       [{ evolving: true }, 60, 120],
     ]
     for (const [over, maxRows, columns] of layouts) expect(texts(band(els, view(over), maxRows, columns, true))).toContain('hello there')
-    expect(bandHasArt(view(), icon.rows + 1, 120, true)).toBe(true)
+    expect(hasArt(view(), icon.rows + 1, 120, true)).toBe(true)
   })
   test('off fullscreen, a full view taller than half the terminal gives way to the line', () => {
     const icon = artSize(species(save.species))
     // Beside the art, the line and an empty bubble take no extra rows: the icon is the height.
     const rows = 2 * icon.rows
-    expect(bandHasArt(view({ bubble: null }), rows, 200, false)).toBe(true)
-    expect(bandHasArt(view({ bubble: null }), rows - 1, 200, false)).toBe(false)
-    expect(bandHasArt(view({ bubble: null }), rows - 1, 200, true)).toBe(true)
+    expect(hasArt(view({ bubble: null }), rows, 200, false)).toBe(true)
+    expect(hasArt(view({ bubble: null }), rows - 1, 200, false)).toBe(false)
+    expect(hasArt(view({ bubble: null }), rows - 1, 200, true)).toBe(true)
     expect(texts(band(els, view(), 24, 200, false))).toContain('Lv5')
   })
   test('wide letters in a nickname are measured as two cells', () => {

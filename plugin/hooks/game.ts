@@ -1,5 +1,5 @@
 import { species } from './data/dex'
-import type { Stone } from './data/types'
+import { stoneName, type Stone } from './data/types'
 import { levelEvolution, stoneEvolution, stonesEarned, tradeEvolution, type Counters } from './evolution'
 import { expForLevel, levelForExp, MAX_LEVEL } from './exp'
 import { previousDate, type LocalTime } from './localtime'
@@ -14,7 +14,6 @@ export type GameEvent =
   | { kind: 'max' }
 
 type Result = { save: Save; events: GameEvent[] }
-const stoneName = (s: Stone) => s.replace('-', ' ').toUpperCase()
 
 export function applyExp(save: Save, gained: Partial<Record<Source, number>>): Result {
   const clean = (n: number | undefined) => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0)

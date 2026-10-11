@@ -93,11 +93,6 @@ export function bandLayout(view: BandView, maxRows: number, columns: number, isF
   return fitArt(sp, maxRows - 1, columns) && fits(artSize(sp).rows + 1) ? { side: null } : null
 }
 
-/** Whether the band draws the icon. */
-export function bandHasArt(view: BandView, maxRows: number, columns: number, isFullscreen: boolean): boolean {
-  return bandLayout(view, maxRows, columns, isFullscreen) !== null
-}
-
 /** The rows of the icon in the buddy's palette, shiny or not. */
 export function artRows(view: BandView): Run[][] {
   return spriteRows(species(view.save.species).icon, view.save.isShiny)

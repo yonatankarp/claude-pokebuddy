@@ -7,6 +7,7 @@ import { FINISHED_MAX, normaliseLine } from './judge'
 import { rekeyCheck } from './signals'
 import { species } from './data/dex'
 import { PERSONALITIES, rollFrom } from './roll'
+import { SOURCES } from './tally'
 
 export const SAVE_VERSION = 1
 export const START_LEVEL = 5
@@ -32,7 +33,6 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 const isInt = (v: unknown, lo: number, hi: number) => typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi
 const isNum = (v: unknown, lo: number, hi = Infinity): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi
 const isDate = (v: unknown) => v === null || (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v))
-const SOURCES: readonly string[] = ['prompt', 'tool', 'active', 'config', 'commit', 'push', 'green', 'judge', 'feed']
 const COUNTERS = ['greens', 'commits', 'configEdits', 'feedRun']
 
 /**
@@ -51,7 +51,7 @@ function validSave(raw: Record<string, unknown>): boolean {
   if (!isNum(raw.lifetimeExp, 0)) return false
   if (typeof raw.isShiny !== 'boolean' || !(PERSONALITIES as readonly unknown[]).includes(raw.personality)) return false
   if (raw.nickname !== null && (typeof raw.nickname !== 'string' || [...raw.nickname].length > NICKNAME_MAX)) return false
-  if (!isObj(raw.expBySource) || !Object.entries(raw.expBySource).every(([k, v]) => !SOURCES.includes(k) || isNum(v, 0))) return false
+  if (!isObj(raw.expBySource) || !Object.entries(raw.expBySource).every(([k, v]) => !(SOURCES as readonly string[]).includes(k) || isNum(v, 0))) return false
   if (!isObj(raw.bag) || !Object.entries(raw.bag).every(([k, v]) => !(STONES as readonly string[]).includes(k) || isInt(v, 0, Number.MAX_SAFE_INTEGER))) return false
   if (!isObj(raw.counters) || !COUNTERS.every(k => isInt((raw.counters as Record<string, unknown>)[k], 0, Number.MAX_SAFE_INTEGER))) return false
   if (!isObj(raw.checks) || !Object.values(raw.checks).every(v => typeof v === 'boolean')) return false

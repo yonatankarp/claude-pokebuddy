@@ -1,15 +1,16 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PromptOrigin, Register, ToolCallResult } from 'claude-code'
-import { dexText, helpText, parseArgs, parseStone, statsText } from './commands'
-import { COMMAND, DENIED_MAX, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
-import { findSpecies, species } from './data/dex'
-import { applyExp, applyTurn, cancelEvolution, feed, finishEvolution, useStone, type GameEvent } from './game'
+import { runCommand, type CommandIO } from './commands'
+import { DENIED_MAX, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
+import { species } from './data/dex'
+import { stoneName } from './data/types'
+import { applyExp, applyTurn, finishEvolution, type GameEvent } from './game'
 import { FINISHED_MAX, judge, lineSession, tagLine, takeEnded } from './judge'
 import { localTime } from './localtime'
 import { band, type BandView } from './render/band'
 import { signalsFromTool, type Outcome } from './signals'
 import { EXCERPT_MAX, speak, turnFacts } from './speech'
-import { exportBlob, freshSave, importBlob, NICKNAME_MAX, parseSave, type Save } from './state'
+import { freshSave, parseSave, type Save } from './state'
 import { emptyTally, scoreTally, withoutReds, type Tally } from './tally'
 
 const saveAtom = atom({ plugin: 'pokebuddy', key: 'save' } as const, null)
@@ -29,7 +30,6 @@ export function corruptAdvice(backup: ReturnType<typeof parseSave>['kind']): str
 
 /** Why the save cannot be used this session (null when it can), and whether the person was told. */
 const blocked: { reason: string | null; isToasted: boolean } = { reason: null, isToasted: false }
-const blockedText = () => ({ text: blocked.reason ?? READ_ONLY })
 const randomSeed = () => Array.from(crypto.getRandomValues(new Uint32Array(4)))
 
 export function shouldHandleTurn(e: { agentId?: string; isAborted: boolean }): boolean {
@@ -127,7 +127,7 @@ async function mutate<T>($: EngineInterface, change: (s: Save) => { save: Save; 
 async function announce($: EngineInterface, events: readonly GameEvent[], save: Save) {
   for (const ev of events) {
     if (ev.kind === 'level') $.ui.toast(`${save.nickname ?? species(save.species).name} grew to Lv ${ev.level}!`)
-    if (ev.kind === 'stone') $.ui.toast(`You found a ${ev.stone.replace('-', ' ').toUpperCase()}!`)
+    if (ev.kind === 'stone') $.ui.toast(`You found a ${stoneName(ev.stone)}!`)
     if (ev.kind === 'evolved') $.ui.toast(`Congratulations! ${species(ev.from).name} evolved into ${species(ev.to).name}!`)
     if (ev.kind === 'max') $.ui.toast('Level 100!')
   }
@@ -154,6 +154,26 @@ function scheduleEvolution($: EngineInterface) {
 function clients($: EngineInterface) {
   return {
     model: { complete: (...a: Parameters<EngineInterface['model']['complete']>) => $.model.complete(...a) },
+  }
+}
+
+/** The engine calls the command handlers make, spelled out here where the loader follows `$`. */
+function commandIO($: EngineInterface, isInteractive: boolean): CommandIO {
+  return {
+    isInteractive,
+    now: () => $.clock.now(),
+    load: () => loadFresh($),
+    show: async save => { await update($, saveAtom, () => save) },
+    mutate: change => mutate($, change),
+    blockedText: () => blocked.reason ?? READ_ONLY,
+    readRaw: key => $.store.get(key),
+    writeRaw: (key, value) => $.store.set(key, value as never),
+    backUp: raw => backUp($, raw),
+    install: save => install($, save),
+    quietBubble: async () => { await update($, bubbleAtom, () => null) },
+    copy: async text => (await $.ui.copy({ text })).isCopied,
+    evolutionStopped: () => { evolutionTimer.generation++ },
+    randomSeed,
   }
 }
 
@@ -277,106 +297,7 @@ export const register: Register = (on, options) => {
     return result
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'buddy' }, async ($, e) => {
-    const { sub, rest } = parseArgs(e.args)
-    if (sub === 'help') return { text: helpText(COMMAND) }
-    if (sub === 'dex' && rest) {
-      const s = findSpecies(rest)
-      return { text: s ? dexText(s, false) : `No Gen 1 Pokémon called "${rest}".` }
-    }
-    const local = localTime(await $.clock.now())
-    switch (sub) {
-      case 'stats': {
-        const s = await loadFresh($)
-        if (s) await update($, saveAtom, () => s)
-        return s ? { text: statsText(s, local.date) } : blockedText()
-      }
-      case 'dex': {
-        const s = await loadFresh($)
-        return s ? { text: dexText(species(s.species), true) } : blockedText()
-      }
-      case 'feed': {
-        if (!isInteractive) return { text: 'Feeding needs you at the terminal: a run with no one watching (-p, the SDK) earns nothing.' }
-        const r = await mutate($, s => feed(s, local))
-        if (!r) return blockedText()
-        const name = species(r.save.species).name
-        if (!r.fed) return { text: `${name} has already eaten today. Come back tomorrow.` }
-        const days = r.save.counters.feedRun
-        const streak = `Streak: ${days} day${days === 1 ? '' : 's'}.`
-        if (r.gained === 0) return { text: `You fed ${name} a Rare Candy. It is already at Lv 100, so it gains no EXP. ${streak}` }
-        return { text: `You fed ${name} a Rare Candy. +${r.gained} EXP. ${streak}` }
-      }
-      case 'use': {
-        const stone = parseStone(rest)
-        if (!stone) return { text: 'Which stone? moon, fire, water, thunder or leaf.' }
-        let from = 0
-        const r = await mutate($, s => { from = s.species; return useStone(s, stone) })
-        if (!r) return blockedText()
-        if (r.error) return { text: r.error }
-        return { text: `${species(from).name} evolved into ${species(r.save.species).name}!` }
-      }
-      case 'stop': {
-        const r = await mutate($, s => cancelEvolution(s))
-        if (!r) return blockedText()
-        if (r.cancelled) evolutionTimer.generation++
-        return { text: r.cancelled ? `Huh? ${species(r.save.species).name} stopped evolving!` : 'Nothing is evolving right now.' }
-      }
-      case 'toggle': {
-        const r = await mutate($, s => ({ save: { ...s, view: s.view === 'full' ? 'compact' as const : 'full' as const } }))
-        return r ? { text: `Showing the ${r.save.view} view.` } : blockedText()
-      }
-      case 'quiet': {
-        const r = await mutate($, s => ({ save: { ...s, speechOn: !s.speechOn } }))
-        if (!r) return blockedText()
-        if (!r.save.speechOn) await update($, bubbleAtom, () => null)
-        return { text: r.save.speechOn ? 'Speech is on.' : 'Speech is off. No model calls are made: no reactions and no session judge.' }
-      }
-      case 'nickname': {
-        const nickname = [...rest.trim()].slice(0, NICKNAME_MAX).join('') || null
-        const r = await mutate($, s => ({ save: { ...s, nickname } }))
-        if (!r) return blockedText()
-        return { text: nickname ? `Nickname set to ${nickname}.` : 'Nickname cleared.' }
-      }
-      case 'export': {
-        const s = await loadFresh($)
-        if (!s) return blockedText()
-        const blob = exportBlob(s)
-        const copied = await $.ui.copy({ text: blob })
-        return { text: copied.isCopied ? 'Save copied to the clipboard.' : `Copy this save:\n${blob}` }
-      }
-      case 'import': {
-        const parsed = importBlob(rest)
-        if (parsed.kind === 'bad') return { text: parsed.reason }
-        const kept = await backUp($, await $.store.get('save'))
-        await install($, parsed.save)
-        return { text: `Restored ${species(parsed.save.species).name} at Lv ${parsed.save.level}.${kept ? ' Your previous save is in the backup slot.' : ''}` }
-      }
-      case 'restore': {
-        const bak = parseSave(await $.store.get('save.bak'))
-        if (bak.kind !== 'ok') return { text: 'The backup slot does not hold a save this version can read. Nothing was changed.' }
-        const current = await $.store.get('save')
-        if (current !== undefined) await $.store.set('save.bak', current as never)
-        await install($, bak.save)
-        return { text: `Restored ${species(bak.save.species).name} at Lv ${bak.save.level} from the backup slot. The save it replaced is now in the backup slot.` }
-      }
-      case 'reset': {
-        // Read only: an unconfirmed reset writes nothing, not even the fresh roll or the backup loadFresh makes.
-        const raw = await $.store.get('save')
-        const cur = parseSave(raw)
-        if (rest.trim().toLowerCase() !== 'confirm') {
-          const what = cur.kind === 'ok' ? `${cur.save.nickname ?? species(cur.save.species).name} (Lv ${cur.save.level})` : 'the current save'
-          return { text: `This rolls a new Pokémon at Lv 5 and moves ${what} to the backup slot. It works once a day. Run /buddy reset confirm to go ahead.` }
-        }
-        if (cur.kind === 'ok' && cur.save.lastResetDate !== null && cur.save.lastResetDate >= local.date) {
-          return { text: 'You already reset today. Reset works once a day; nothing was changed.' }
-        }
-        const kept = await backUp($, raw)
-        const save = freshSave(randomSeed(), local.date)
-        await install($, save)
-        return { text: `A wild ${species(save.species).name} appeared at Lv ${save.level}! ${kept ? 'Your previous save is in the backup slot.' : 'The backup slot keeps the backup it already had.'}` }
-      }
-    }
-  })
+  on('command.run', { command: 'buddy' }, async ($, e) => ({ text: await runCommand(commandIO($, isInteractive), e.args) }))
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
