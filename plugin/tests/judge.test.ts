@@ -1,7 +1,8 @@
 import type { ModelCompleteRequest, ModelCompleteResult } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
 import { LOG_LINE_MAX } from '../hooks/config'
-import { judge, judgePrompt, parseLine, parseScore, STALE_MS, tagLine, takeEnded } from '../hooks/judge'
+import { judge, judgePrompt, parseScore } from '../hooks/judge'
+import { parseLine, STALE_MS, tagLine, takeEnded } from '../hooks/log'
 
 const usage = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
 

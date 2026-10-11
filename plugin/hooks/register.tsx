@@ -5,7 +5,8 @@ import { DENIED_MAX, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
 import { species } from './data/dex'
 import { stoneName } from './data/types'
 import { applyExp, applyTurn, finishEvolution, type GameEvent } from './game'
-import { FINISHED_MAX, judge, lineSession, tagLine, takeEnded } from './judge'
+import { judge } from './judge'
+import { FINISHED_MAX, lineSession, tagLine, takeEnded } from './log'
 import { localTime } from './localtime'
 import { band, type BandView } from './render/band'
 import { signalsFromTool, type Outcome } from './signals'
@@ -21,7 +22,7 @@ const WINDOW_MS = 10 * 60 * 1000
 const READ_ONLY = 'Your pokebuddy save is from a newer version of the mod. Update the mod; nothing was changed.'
 
 /** What to say about an unreadable save, offering only what can work with the backup slot as it now is. */
-export function corruptAdvice(backup: ReturnType<typeof parseSave>['kind']): string {
+function corruptAdvice(backup: ReturnType<typeof parseSave>['kind']): string {
   const head = 'Your pokebuddy save could not be read.'
   if (backup === 'ok') return `${head} The backup slot holds a good save and was kept; the damaged save was left in place. Run /buddy restore to bring the backup back, or /buddy reset confirm to start over.`
   if (backup === 'future') return `${head} The backup slot holds a save from a newer version and was kept; the damaged save was left in place. Update the mod and run /buddy restore, or run /buddy reset confirm to start over or /buddy import <export> to load an export.`
