@@ -455,7 +455,6 @@ describe('register', () => {
   test('a pane too small for the sprite draws the still icon and asks for no redraws', async ($, on) => {
     world(on, { save: pika('compact') })
     on('ui.open', async () => ({ value: { isPlaced: true as const } }))
-    on('ui.panes', async () => ({ value: [] }))
     const clock = mock.clock(on, { now: NOON })
     await start($)
     await $.command.run(run('pane'))
@@ -490,7 +489,6 @@ describe('register', () => {
       world(on, { save: { ...pika('compact'), nickname: 'Sparky' } })
       const opened: { id: string; title?: string }[] = []
       on('ui.open', async (_$, e) => { opened.push(e); return { value: { isPlaced: true as const } } })
-      on('ui.panes', async () => ({ value: [] }))
       const clock = mock.clock(on, { now: NOON })
       await start($)
       const r = await $.command.run(run('pane'))

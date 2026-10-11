@@ -170,14 +170,11 @@ export const register: Register = (on, options) => {
     // A reload or exit inside the evolution window drops its timer; finish it now.
     const loaded = await mutate($, s => (s.evolution ? finishEvolution(s) : { save: s }))
     if (!isInteractive) return next(e)
-    // A reload raises session.start again: keep one timer, and forget a pane that closed meanwhile.
+    // A reload raises session.start again: keep one timer. The flags come back with the next draw.
     redraw?.cancel()
     redraw = $.clock.every(TICK_MS * 2, () => {
       if (isBandAnimated || isPaneAnimated) $.ui.invalidate('ui.render')
     })
-    try {
-      isPaneAnimated = isPaneAnimated && (await $.ui.panes()).some(p => p.id === 'pokebuddy')
-    } catch {}
     // Take the finished sessions' lines first, then score them, so no other session judges them again.
     // This session's own lines stay for the session after it. Quiet means no model calls: they are dropped.
     const sid = await $.session.id()
