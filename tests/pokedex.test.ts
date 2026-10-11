@@ -22,4 +22,8 @@ describe('generated pokedex', () => {
   test('every sprite has a shiny palette of the same length', () => {
     for (const s of POKEDEX) expect(s.sprite.shiny.length).toBe(s.sprite.palette.length)
   })
+  test('dex text has no soft hyphens and keeps words whole', () => {
+    for (const s of POKEDEX) expect(s.dex.includes('\u00ad')).toBe(false)
+    expect(POKEDEX[24]!.dex).toContain('angered')
+  })
 })

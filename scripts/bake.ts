@@ -13,7 +13,7 @@ const GROWTH: Record<string, Growth> = {
   fast: 'fast', medium: 'medium-fast', 'medium-slow': 'medium-slow', slow: 'slow',
 }
 
-const clean = (s: string) => s.replace(/[\f\n­]+/g, ' ').replace(/\s+/g, ' ').trim()
+const clean = (s: string) => s.replace(/\u00ad[\n\f]?/g, '').replace(/[\f\n]+/g, ' ').replace(/\s+/g, ' ').trim()
 
 const out: Species[] = []
 for (let id = 1; id <= 151; id++) {
