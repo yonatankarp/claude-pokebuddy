@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import { base64Encode } from '../hooks/codec'
 import { species } from '../hooks/data/dex'
 import type { Sprite } from '../hooks/data/types'
-import { artSize, expBar, fitArt, spriteRows, spriteSize } from '../hooks/render/sprite'
+import { artSize, expBar, fitArt, spriteRows, spriteSize, spriteSvg } from '../hooks/render/sprite'
 import { freshSave } from '../hooks/state'
 
 // 2x2: top row [red, transparent], bottom row [blue, red]
@@ -17,6 +17,13 @@ describe('sprite', () => {
       { text: '▀', fg: '#ff0000', bg: '#0000ff' },
       { text: '▄', fg: '#ff0000' },
     ]])
+  })
+  test('svg: one rect per coloured run, transparent pixels skipped', () => {
+    const svg = spriteSvg(tiny, false)
+    expect(svg).toContain('viewBox="0 0 2 2"')
+    expect(svg.match(/<rect /g)?.length).toBe(3)
+    expect(svg).toContain('<rect x="0" y="0" width="1" height="1" fill="#ff0000"/>')
+    expect(spriteSvg(tiny, true)).toContain('fill="#00ff00"')
   })
   test('shiny swaps the palette only', () => {
     expect(spriteRows(tiny, true)[0]![0]).toEqual({ text: '▀', fg: '#00ff00', bg: '#0000ff' })

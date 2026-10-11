@@ -306,6 +306,6 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey) return next(e)
     const view = await drawView($)
     if (!view) return next(e)
-    return band($.ui.resolve(e), view, e.props.maxRows, e.props.bodyColumns, e.viewport?.isFullscreen === true)
+    return band($.ui.resolve(e), view, e.props.maxRows, e.props.bodyColumns, e.viewport?.isFullscreen === true, e.surface)
   })
 }
