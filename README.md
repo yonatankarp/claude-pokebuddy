@@ -92,7 +92,7 @@ Change them in `/config` (each option is a row there) or under `pluginConfigs.po
 | `speechModel` | `haiku` | The model for speech and the session judge |
 | `speechContext` | `conversation` | `conversation` lets speech react to what you asked and what Claude answered; `facts` sends only a summary |
 
-One small model call per turn at most; prompts and answers are never saved. `/buddy quiet` stops all calls.
+At most one small model call per turn, plus one at session start to score earlier sessions; prompts and answers are never saved. `/buddy quiet` stops all calls.
 
 <details><summary>What is sent and what is saved</summary>
 
