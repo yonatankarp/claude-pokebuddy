@@ -18,8 +18,14 @@ const flashAtom = atom({ plugin: 'pokebuddy', key: 'flashUntil' } as const, 0)
 
 const WINDOW_MS = 10 * 60 * 1000
 const READ_ONLY = 'Your pokebuddy save is from a newer version of the mod. Update the mod; nothing was changed.'
-const CORRUPT = 'Your pokebuddy save could not be read. It was kept in save.bak. Run /buddy restore or /buddy reset confirm.'
-const CORRUPT_BAK_KEPT = 'Your pokebuddy save could not be read. Your previous backup in save.bak was kept; the damaged save was left in place. Run /buddy restore or /buddy reset confirm.'
+
+/** What to say about an unreadable save, offering only what can work with the backup slot as it now is. */
+export function corruptAdvice(backup: ReturnType<typeof parseSave>['kind']): string {
+  const head = 'Your pokebuddy save could not be read.'
+  if (backup === 'ok') return `${head} The backup slot holds a good save and was kept; the damaged save was left in place. Run /buddy restore to bring the backup back, or /buddy reset confirm to start over.`
+  if (backup === 'future') return `${head} The backup slot holds a save from a newer version and was kept; the damaged save was left in place. Update the mod and run /buddy restore, or run /buddy reset confirm to start over or /buddy import <export> to load an export.`
+  return `${head} The damaged save is kept in the backup slot. Run /buddy reset confirm to start over, or /buddy import <export> to load an export.`
+}
 
 /** Why the save cannot be used this session (null when it can), and whether the person was told. */
 const blocked: { reason: string | null; isToasted: boolean } = { reason: null, isToasted: false }
@@ -76,10 +82,14 @@ async function loadFresh($: EngineInterface): Promise<Save | null> {
     const save = freshSave(randomSeed())
     await $.store.set('save', save)
     blocked.reason = null
+    $.ui.toast(`A wild ${species(save.species).name} appeared! Type /buddy to meet it.`)
     return save
   }
   if (parsed.kind === 'future') blocked.reason = READ_ONLY
-  else blocked.reason = (await backUp($, raw)) ? CORRUPT : CORRUPT_BAK_KEPT
+  else {
+    await backUp($, raw)
+    blocked.reason = corruptAdvice(parseSave(await $.store.get('save.bak')).kind)
+  }
   if (!blocked.isToasted) {
     blocked.isToasted = true
     $.ui.toast(blocked.reason)
@@ -321,15 +331,15 @@ export const register: Register = (on, options) => {
         if (parsed.kind === 'bad') return { text: parsed.reason }
         const kept = await backUp($, await $.store.get('save'))
         await install($, parsed.save)
-        return { text: `Restored ${species(parsed.save.species).name} at Lv ${parsed.save.level}.${kept ? ' Your previous save is in save.bak.' : ''}` }
+        return { text: `Restored ${species(parsed.save.species).name} at Lv ${parsed.save.level}.${kept ? ' Your previous save is in the backup slot.' : ''}` }
       }
       case 'restore': {
         const bak = parseSave(await $.store.get('save.bak'))
-        if (bak.kind !== 'ok') return { text: 'save.bak does not hold a save this version can read. Nothing was changed.' }
+        if (bak.kind !== 'ok') return { text: 'The backup slot does not hold a save this version can read. Nothing was changed.' }
         const current = await $.store.get('save')
         if (current !== undefined) await $.store.set('save.bak', current as never)
         await install($, bak.save)
-        return { text: `Restored ${species(bak.save.species).name} at Lv ${bak.save.level} from save.bak. The save it replaced is now in save.bak.` }
+        return { text: `Restored ${species(bak.save.species).name} at Lv ${bak.save.level} from the backup slot. The save it replaced is now in the backup slot.` }
       }
       case 'reset': {
         // Read only: an unconfirmed reset writes nothing, not even the fresh roll or the backup loadFresh makes.
@@ -337,7 +347,7 @@ export const register: Register = (on, options) => {
         const cur = parseSave(raw)
         if (rest.trim().toLowerCase() !== 'confirm') {
           const what = cur.kind === 'ok' ? `${cur.save.nickname ?? species(cur.save.species).name} (Lv ${cur.save.level})` : 'the current save'
-          return { text: `This rolls a new Pokémon at Lv 5 and moves ${what} to save.bak. It works once a day. Run /buddy reset confirm to go ahead.` }
+          return { text: `This rolls a new Pokémon at Lv 5 and moves ${what} to the backup slot. It works once a day. Run /buddy reset confirm to go ahead.` }
         }
         if (cur.kind === 'ok' && cur.save.lastResetDate !== null && cur.save.lastResetDate >= local.date) {
           return { text: 'You already reset today. Reset works once a day; nothing was changed.' }
@@ -345,7 +355,7 @@ export const register: Register = (on, options) => {
         const kept = await backUp($, raw)
         const save = freshSave(randomSeed(), local.date)
         await install($, save)
-        return { text: `A wild ${species(save.species).name} appeared at Lv ${save.level}! ${kept ? 'Your previous save is in save.bak.' : 'save.bak keeps the backup it already had.'}` }
+        return { text: `A wild ${species(save.species).name} appeared at Lv ${save.level}! ${kept ? 'Your previous save is in the backup slot.' : 'The backup slot keeps the backup it already had.'}` }
       }
     }
   })

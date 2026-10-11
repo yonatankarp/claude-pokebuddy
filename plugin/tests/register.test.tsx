@@ -70,8 +70,9 @@ describe('register', () => {
     mock.clock(on, { now: Date.UTC(2026, 9, 11, 12) })
     await start($)
     await $.command.run(run('stats'))
-    const save = store.get('save') as { level: number } | undefined
+    const save = store.get('save') as { level: number; species: number } | undefined
     expect(save?.level).toBe(5)
+    expect(toasts).toEqual([`A wild ${species(save!.species).name} appeared! Type /buddy to meet it.`])
   })
 
   test('a future-version save is left untouched and commands say read-only', async ($, on) => {
@@ -101,7 +102,8 @@ describe('register', () => {
     expect(store.get('save')).toBe('garbage')
     expect(store.get('save.bak')).toBe('garbage')
     expect(r.text).toMatch(/could not be read/)
-    expect(toasts.filter(t => /could not be read.*save\.bak.*\/buddy restore.*\/buddy reset/.test(t))).toHaveLength(1)
+    expect(toasts.filter(t => /could not be read.*kept in the backup slot.*\/buddy reset confirm.*\/buddy import/.test(t))).toHaveLength(1)
+    expect(toasts.join()).not.toMatch(/restore|save\.bak/)
   })
 
   test('a corrupt save never overwrites a valid backup', async ($, on) => {
@@ -112,9 +114,40 @@ describe('register', () => {
     await $.command.run(run('stats'))
     expect(store.get('save.bak')).toEqual(good)
     expect(toasts).toHaveLength(1)
-    expect(toasts[0]).toMatch(/previous backup in save\.bak was kept; the damaged save was left in place/)
-    expect(toasts[0]).not.toMatch(/It was kept in save\.bak/)
-    expect(toasts[0]).toMatch(/\/buddy restore or \/buddy reset/)
+    expect(toasts[0]).toMatch(/backup slot holds a good save and was kept; the damaged save was left in place/)
+    expect(toasts[0]).toMatch(/\/buddy restore.*\/buddy reset confirm/)
+  })
+
+  test('a corrupt save with no backup: the advice it gives works', async ($, on) => {
+    const store = world(on, { save: 'garbage' })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect(toasts[0]).toMatch(/\/buddy reset confirm/)
+    expect((await $.command.run(run('restore'))).text).toMatch(/does not hold/)
+    expect((await $.command.run(run(`import ${exportBlob(freshSave([7, 7, 7, 7]))}`))).text).toMatch(/Restored/)
+    expect((await $.command.run(run('stats'))).text).not.toMatch(/could not be read/)
+    store.set('save', 'garbage again')
+    expect((await $.command.run(run('reset confirm'))).text).toMatch(/appeared/)
+    expect((await $.command.run(run('feed'))).text).toMatch(/Rare Candy/)
+  })
+
+  test('a corrupt save with a newer-version backup offers no restore that cannot work', async ($, on) => {
+    const store = world(on, { save: 'garbage', 'save.bak': { version: 99 } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect(toasts[0]).toMatch(/newer version.*Update the mod.*\/buddy reset confirm/)
+    expect(store.get('save.bak')).toEqual({ version: 99 })
+    expect((await $.command.run(run('reset confirm'))).text).toMatch(/appeared/)
+  })
+
+  test('a corrupt save with a good backup: restore, as advised, works', async ($, on) => {
+    const good = freshSave([9, 9, 9, 9])
+    world(on, { save: 'garbage', 'save.bak': good })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect(toasts[0]).toMatch(/\/buddy restore/)
+    expect((await $.command.run(run('restore'))).text).toMatch(/Restored/)
+    expect((await $.command.run(run('feed'))).text).toMatch(/Rare Candy/)
   })
 
   test('restore swaps a valid backup in and keeps the current raw as save.bak', async ($, on) => {
@@ -135,7 +168,7 @@ describe('register', () => {
     mock.clock(on)
     await start($)
     const r = await $.command.run(run('restore'))
-    expect(r.text).toMatch(/save\.bak/)
+    expect(r.text).toMatch(/backup slot does not hold/)
     expect(store.get('save')).toBe('garbage')
   })
 
@@ -147,7 +180,7 @@ describe('register', () => {
     const r = await $.command.run(run('reset confirm'))
     expect(store.get('save.bak')).toEqual(good)
     expect((store.get('save') as { version: number }).version).toBe(1)
-    expect(r.text).toMatch(/save\.bak keeps the backup/)
+    expect(r.text).toMatch(/backup slot keeps the backup/)
   })
 
   test('reset rolls a fresh save and backs up the current one', async ($, on) => {
@@ -156,7 +189,7 @@ describe('register', () => {
     mock.clock(on)
     await start($)
     const r = await $.command.run(run('reset confirm'))
-    expect(r.text).toMatch(/save\.bak/)
+    expect(r.text).toMatch(/previous save is in the backup slot/)
     expect(store.get('save.bak')).toEqual(s)
     const fresh = store.get('save') as { version: number; seed: number[] }
     expect(fresh.version).toBe(1)

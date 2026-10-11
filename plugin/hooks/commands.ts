@@ -70,7 +70,7 @@ export function helpText(command: string): string {
     `/${command} nickname <name>: set a nickname (empty to clear)`,
     `/${command} export: copy your save to the clipboard`,
     `/${command} import <blob>: restore a save`,
-    `/${command} restore: swap save.bak back in`,
-    `/${command} reset: what a reset does; /${command} reset confirm rolls a new Pokémon, once a day (the current save goes to save.bak)`,
+    `/${command} restore: swap the backup slot back in`,
+    `/${command} reset: what a reset does; /${command} reset confirm rolls a new Pokémon, once a day (the current save goes to the backup slot)`,
   ].join('\n')
 }
