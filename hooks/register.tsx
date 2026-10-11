@@ -8,7 +8,7 @@ import { judge, lineFacts, lineSession, tagLine } from './judge'
 import { localTime, readOffset } from './localtime'
 import { band, type BandView } from './render/band'
 import { signalsFromTool, type Outcome } from './signals'
-import { speak, turnFacts } from './speech'
+import { EXCERPT_MAX, speak, turnFacts } from './speech'
 import { exportBlob, freshSave, importBlob, parseSave, type Save } from './state'
 import { emptyTally, scoreTally, withoutReds, type Tally } from './tally'
 
@@ -147,6 +147,10 @@ async function drawView($: EngineInterface): Promise<BandView | null> {
 
 export const register: Register = (on, options) => {
   const model = String(options.speechModel ?? 'haiku')
+  // 'facts' keeps the conversation from the speech model; the session judge only ever sees facts.
+  const hearsConversation = options.speechContext !== 'facts'
+  // The person's last prompt of this turn, for speech only: never stored, dropped when the turn ends.
+  let turnPrompt: string | null = null
   let tally: Tally = emptyTally()
   let lastWindow = -1
   let offset: number | null = null
@@ -186,6 +190,7 @@ export const register: Register = (on, options) => {
   on('prompt.submit', async ($, e, next) => {
     if (countsAsPrompt(e)) {
       tally.prompts++
+      turnPrompt = e.text.slice(0, EXCERPT_MAX)
       const window = Math.floor((await $.clock.now()) / WINDOW_MS)
       if (window !== lastWindow) { tally.activeWindows++; lastWindow = window }
     }
@@ -211,6 +216,8 @@ export const register: Register = (on, options) => {
     if (!shouldHandleTurn(e)) return result
     const turn = e.isAborted ? withoutReds(tally) : tally
     tally = emptyTally()
+    const talk = hearsConversation ? { prompt: turnPrompt, answer: e.answer.slice(0, EXCERPT_MAX) } : null
+    turnPrompt = null
     // A headless run (-p, the SDK) has no one watching: no EXP, no log line, no speech.
     if (!isInteractive) return result
     const sid = await $.session.id()
@@ -223,7 +230,7 @@ export const register: Register = (on, options) => {
     if (r?.save.speechOn) {
       const save = r.save
       $.clock.after(0, async () => {
-        const line = await speak(clients($), model, save, facts)
+        const line = await speak(clients($), model, save, facts, talk)
         await update($, bubbleAtom, () => line)
       })
     }

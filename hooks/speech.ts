@@ -27,11 +27,24 @@ export function cry(name: string, rand: () => number): string {
   return shapes[Math.floor(rand() * shapes.length)]!
 }
 
-export function speechPrompt(save: Save, facts: string): { system: string; prompt: string } {
+/** What the person asked this turn and how Claude's answer began; null keeps speech to the facts. */
+export type Conversation = { prompt: string | null; answer: string | null }
+/** How much of the prompt and of the answer the speech model sees. */
+export const EXCERPT_MAX = 300
+
+const FACTS_SYSTEM = 'You are a Pokémon companion living in a developer\'s terminal. Reply with one short line (max 12 words) in character, reacting to what just happened. Use your cry sometimes. No quotes, no emoji, no markdown, no em dashes.'
+const CONVERSATION_SYSTEM = 'You are a Pokémon companion living in a developer\'s terminal. Reply with one short line (max 12 words) in character, reacting to what the person asked and what got done. Never quote secrets or code verbatim. Use your cry sometimes. No quotes, no emoji, no markdown, no em dashes.'
+
+const excerpt = (text: string | null) => (text ?? '').trim().slice(0, EXCERPT_MAX)
+
+export function speechPrompt(save: Save, facts: string, talk: Conversation | null = null): { system: string; prompt: string } {
   const sp = species(save.species)
+  const who = `You are ${save.nickname ?? sp.name}, a ${save.isShiny ? 'shiny ' : ''}${sp.name} at level ${save.level}, ${save.personality} by nature. This turn: ${facts}.`
+  if (!talk) return { system: FACTS_SYSTEM, prompt: who }
+  const asked = excerpt(talk.prompt), answered = excerpt(talk.answer)
   return {
-    system: 'You are a Pokémon companion living in a developer\'s terminal. Reply with one short line (max 12 words) in character, reacting to what just happened. Use your cry sometimes. No quotes, no emoji, no markdown, no em dashes.',
-    prompt: `You are ${save.nickname ?? sp.name}, a ${save.isShiny ? 'shiny ' : ''}${sp.name} at level ${save.level}, ${save.personality} by nature. This turn: ${facts}.`,
+    system: CONVERSATION_SYSTEM,
+    prompt: [who, ...(asked ? [`The person asked: ${asked}`] : []), ...(answered ? [`Claude answered: ${answered}`] : [])].join('\n'),
   }
 }
 
@@ -46,11 +59,11 @@ export function cleanReply(text: string, max: number): string | null {
   return unquoted.slice(0, max)
 }
 
-export async function speak($: { model: Pick<EngineInterface['model'], 'complete'> }, model: string, save: Save, facts: string): Promise<string> {
+export async function speak($: { model: Pick<EngineInterface['model'], 'complete'> }, model: string, save: Save, facts: string, talk: Conversation | null = null): Promise<string> {
   let fallback = 'Pika!'
   try {
     fallback = cry(species(save.species).name, Math.random)
-    const { system, prompt } = speechPrompt(save, facts)
+    const { system, prompt } = speechPrompt(save, facts, talk)
     const r = await $.model.complete({ model, system, prompt, maxTokens: 60, timeoutMs: SPEECH_TIMEOUT_MS })
     return (r.isAnswered && cleanReply(r.text, 80)) || fallback
   } catch {

@@ -28,6 +28,28 @@ describe('speech', () => {
     expect(p.prompt).toContain(s.personality)
     expect(p.prompt).toContain('a quiet turn')
   })
+  test('conversation: the prompt carries the asked and answered excerpts, each cut at 300 characters', () => {
+    const s = freshSave([1, 2, 3, 4])
+    const asked = 'fix the login bug ' + 'x'.repeat(400)
+    const p = speechPrompt(s, '1 prompt', { prompt: asked, answer: 'Fixed the null check in auth.ts.' })
+    expect(p.prompt).toContain('fix the login bug')
+    expect(p.prompt).toContain('Fixed the null check in auth.ts.')
+    expect(p.prompt).toContain(asked.slice(0, 300))
+    expect(p.prompt).not.toContain(asked.slice(0, 301))
+    expect(p.prompt).toContain('1 prompt')
+    expect(p.system).toMatch(/never quote secrets or code/i)
+  })
+  test('facts: no conversation in the prompt, the system prompt as before', () => {
+    const s = freshSave([1, 2, 3, 4])
+    const facts = speechPrompt(s, '1 prompt')
+    expect(facts).toEqual(speechPrompt(s, '1 prompt', null))
+    expect(facts.prompt).not.toMatch(/asked|answered/i)
+    expect(facts.system).not.toMatch(/asked/i)
+  })
+  test('conversation: an empty prompt or answer is left out', () => {
+    const p = speechPrompt(freshSave([1, 2, 3, 4]), 'a quiet turn', { prompt: null, answer: '' })
+    expect(p.prompt).not.toMatch(/asked|answered/i)
+  })
   test('system prompt has no em dash', () => {
     expect(speechPrompt(freshSave([1, 2, 3, 4]), 'x').system.includes('—')).toBe(false)
   })

@@ -406,6 +406,51 @@ describe('register', () => {
     expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'bridge' } })).toBe(true)
   })
 
+  const talkTurn = async ($: Engine) => {
+    await $.prompt.submit({ text: 'please fix the flaky login test', wait: false, origin: { kind: 'composer' } })
+    await $.turn.complete({ answer: 'Fixed it: the test now waits for the session.', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  }
+
+  test('speech hears the prompt and the start of the answer; the save keeps facts only', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await talkTurn($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(1)
+    expect(modelCalls[0]).toContain('please fix the flaky login test')
+    expect(modelCalls[0]).toContain('Fixed it: the test now waits')
+    expect(JSON.stringify(store.get('save'))).not.toContain('flaky')
+    expect(JSON.stringify(store.get('save'))).not.toContain('Fixed it')
+  })
+
+  test('the facts setting keeps the conversation from the model', { options: { speechContext: 'facts' } }, async ($, on) => {
+    world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await talkTurn($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(1)
+    expect(modelCalls[0]).not.toContain('flaky')
+    expect(modelCalls[0]).not.toContain('Fixed it')
+    expect(modelCalls[0]).toContain('1 prompt')
+  })
+
+  test('a turn without a prompt of the person\'s own does not reuse the last one', async ($, on) => {
+    world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await talkTurn($)
+    await clock.advance(1)
+    await endTurn($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(2)
+    expect(modelCalls[1]).not.toContain('flaky')
+  })
+
   test('a turn tags its log line with the session id', async ($, on) => {
     const store = world(on, { save: freshSave([1, 2, 3, 4]) })
     loop(on)

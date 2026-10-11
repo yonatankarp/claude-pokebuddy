@@ -9,6 +9,16 @@
       "title": "Speech model",
       "description": "Model alias or id for the buddy's reactions and the session judge.",
       "default": "haiku"
+    },
+    "speechContext": {
+      "type": "string",
+      "title": "Speech context",
+      "description": "What the buddy's model sees: your prompt and the start of Claude's answer, or only counts of what happened.",
+      "options": [
+        "conversation",
+        "facts"
+      ],
+      "default": "conversation"
     }
   }
 }
