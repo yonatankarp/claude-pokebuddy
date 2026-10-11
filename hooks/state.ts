@@ -11,7 +11,8 @@ export const START_LEVEL = 5
 
 export type { Save }
 
-export function freshSave(seed: number[]): Save {
+/** `lastResetDate` is the day a reset rolled it, so the once-a-day limit outlives the reset. */
+export function freshSave(seed: number[], lastResetDate: string | null = null): Save {
   const roll = rollFrom(seed)
   const exp = expForLevel(species(roll.species).growth, START_LEVEL)
   return {
@@ -19,7 +20,7 @@ export function freshSave(seed: number[]): Save {
     nickname: null, level: START_LEVEL, exp, lifetimeExp: 0, expBySource: {}, bag: {},
     counters: { greens: 0, commits: 0, configEdits: 0, feedRun: 0 }, checks: {},
     lastMoonDate: null, feed: { lastDate: null }, pendingLog: [], speechOn: true, view: 'full',
-    evolution: null, cancelledAtLevel: null,
+    evolution: null, cancelledAtLevel: null, lastResetDate,
   }
 }
 
@@ -33,6 +34,7 @@ const COUNTERS = ['greens', 'commits', 'configEdits', 'feedRun']
 /**
  * The shape version 1 promises. Unknown keys inside expBySource and bag are ignored (kept, never read),
  * so a point release may add a source or an item without old builds calling the save corrupt.
+ * lastResetDate came later and is optional: a save without it reads as null.
  * Any other change to the shape needs a version bump.
  */
 function validSave(raw: Record<string, unknown>): boolean {
@@ -54,6 +56,7 @@ function validSave(raw: Record<string, unknown>): boolean {
   if (typeof raw.speechOn !== 'boolean' || (raw.view !== 'compact' && raw.view !== 'full')) return false
   if (raw.evolution !== null && !(isObj(raw.evolution) && isInt(raw.evolution.to, 1, 151))) return false
   if (raw.cancelledAtLevel !== null && !isInt(raw.cancelledAtLevel, 1, 100)) return false
+  if (raw.lastResetDate !== undefined && !isDate(raw.lastResetDate)) return false
   return true
 }
 
@@ -65,10 +68,17 @@ export function parseSave(raw: unknown):
   return validSave(raw) ? { kind: 'ok', save: normalise(raw as unknown as Save) } : { kind: 'corrupt' }
 }
 
-/** A save older builds wrote with more than CHECKS_MAX checks keeps the newest (scoreTally adds them last). */
+/**
+ * A save older builds wrote with more than CHECKS_MAX checks keeps the newest (scoreTally adds them last);
+ * one without lastResetDate gets null.
+ */
 function normalise(save: Save): Save {
   const checks = Object.entries(save.checks)
-  return checks.length > CHECKS_MAX ? { ...save, checks: Object.fromEntries(checks.slice(-CHECKS_MAX)) } : save
+  return {
+    ...save,
+    checks: checks.length > CHECKS_MAX ? Object.fromEntries(checks.slice(-CHECKS_MAX)) : save.checks,
+    lastResetDate: save.lastResetDate ?? null,
+  }
 }
 
 export function exportBlob(save: Save): string {

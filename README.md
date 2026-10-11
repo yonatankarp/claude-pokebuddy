@@ -34,7 +34,8 @@ The command is `/buddy`. In some contexts Claude Code shows it namespaced as `/p
 | `/buddy export` | Copy your save to the clipboard |
 | `/buddy import <blob>` | Restore a save |
 | `/buddy restore` | Swap `save.bak` back in |
-| `/buddy reset` | Roll a new Pokémon; the current save goes to `save.bak` |
+| `/buddy reset` | Say what a reset does and ask for `/buddy reset confirm` |
+| `/buddy reset confirm` | Roll a new Pokémon, once a day; the current save goes to `save.bak` |
 
 The full view, the default, draws the Crystal sprite above a one-line summary when the band has room, and the smaller Gen 7 menu icon when it does not. The compact view is the summary line alone.
 
@@ -42,7 +43,7 @@ The Crystal sprite moves with its own animation from Pokémon Crystal: the idle 
 
 `/buddy pane` opens a pane, beside the conversation in fullscreen and above the prompt otherwise, with the animated sprite, its name, level, EXP bar and latest speech bubble. A pane too small for the sprite shows the still icon. Close it as any pane, from its close mark or with ctrl+x x.
 
-Saves live in the plugin's store, one per machine. `export` and `import` move a save between machines. The blob carries a 32-bit checksum that catches damage, not tampering. One backup slot, `save.bak`, keeps the previous save on `import`, `restore` and `reset`. If the save cannot be read, nothing is rerolled: it is copied to `save.bak` (unless that already holds a readable save), the buddy goes read-only and a notice says to run `/buddy restore` or `/buddy reset`.
+Saves live in the plugin's store, one per machine. `export` and `import` move a save between machines. The blob carries a 32-bit checksum that catches damage, not tampering. One backup slot, `save.bak`, keeps the previous save on `import`, `restore` and `reset`. A reset needs `/buddy reset confirm` and works once per local day, so a stray command cannot throw your Pokémon away or reroll for a shiny. If the save cannot be read, nothing is rerolled: it is copied to `save.bak` (unless that already holds a readable save), the buddy goes read-only and a notice says to run `/buddy restore` or `/buddy reset confirm`, which is then always allowed.
 
 ## How EXP works
 

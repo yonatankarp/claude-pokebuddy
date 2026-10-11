@@ -72,6 +72,6 @@ export function helpText(command: string): string {
     `/${command} export: copy your save to the clipboard`,
     `/${command} import <blob>: restore a save`,
     `/${command} restore: swap save.bak back in`,
-    `/${command} reset: roll a new Pokémon (the current save goes to save.bak)`,
+    `/${command} reset: what a reset does; /${command} reset confirm rolls a new Pokémon, once a day (the current save goes to save.bak)`,
   ].join('\n')
 }

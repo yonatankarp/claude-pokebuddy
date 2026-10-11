@@ -20,6 +20,8 @@ export type Save = {
   view: 'compact' | 'full'
   evolution: { to: number } | null
   cancelledAtLevel: number | null
+  /** The local day of the last `/buddy reset confirm` (YYYY-MM-DD). Saves from before it read as null. */
+  lastResetDate: string | null
 }
 
 declare module 'claude-code' {

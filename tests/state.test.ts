@@ -22,6 +22,15 @@ describe('save', () => {
     expect(parseSave('nonsense').kind).toBe('corrupt')
     expect(parseSave({ ...s, species: 999 }).kind).toBe('corrupt')
   })
+  test('lastResetDate: missing reads as null, a date or null is kept, anything else is corrupt', () => {
+    const s = freshSave([1, 2, 3, 4])
+    expect(s.lastResetDate).toBe(null)
+    const { lastResetDate: _, ...old } = s
+    expect(parseSave(old)).toEqual({ kind: 'ok', save: { ...old, lastResetDate: null } })
+    expect(parseSave({ ...s, lastResetDate: '2026-10-11' }).kind).toBe('ok')
+    expect(parseSave({ ...s, lastResetDate: 'yesterday' }).kind).toBe('corrupt')
+    expect(freshSave([1, 2, 3, 4], '2026-10-11').lastResetDate).toBe('2026-10-11')
+  })
   test('export and import round-trip; tampering is refused', () => {
     const s = { ...freshSave([5, 6, 7, 8]), nickname: 'Sparky ⚡' }
     const blob = exportBlob(s)

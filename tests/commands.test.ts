@@ -14,6 +14,9 @@ describe('commands', () => {
   test('help lists the pane', () => {
     expect(helpText('buddy')).toContain('/buddy pane: ')
   })
+  test('help says reset needs confirm', () => {
+    expect(helpText('buddy')).toContain('/buddy reset confirm')
+  })
   test('parseStone', () => {
     expect(parseStone('thunder')).toBe('thunder-stone')
     expect(parseStone('Thunder Stone')).toBe('thunder-stone')

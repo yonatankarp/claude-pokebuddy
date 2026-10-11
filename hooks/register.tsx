@@ -20,8 +20,8 @@ const flashAtom = atom({ plugin: 'pokebuddy', key: 'flashUntil' } as const, 0)
 
 const WINDOW_MS = 10 * 60 * 1000
 const READ_ONLY = 'Your pokebuddy save is from a newer version of the mod. Update the mod; nothing was changed.'
-const CORRUPT = 'Your pokebuddy save could not be read. It was kept in save.bak. Run /buddy restore or /buddy reset.'
-const CORRUPT_BAK_KEPT = 'Your pokebuddy save could not be read. Your previous backup in save.bak was kept; the damaged save was left in place. Run /buddy restore or /buddy reset.'
+const CORRUPT = 'Your pokebuddy save could not be read. It was kept in save.bak. Run /buddy restore or /buddy reset confirm.'
+const CORRUPT_BAK_KEPT = 'Your pokebuddy save could not be read. Your previous backup in save.bak was kept; the damaged save was left in place. Run /buddy restore or /buddy reset confirm.'
 
 /** Why the save cannot be used this session (null when it can), and whether the person was told. */
 const blocked: { reason: string | null; isToasted: boolean } = { reason: null, isToasted: false }
@@ -332,8 +332,18 @@ export const register: Register = (on, options) => {
         return { text: `Restored ${species(bak.save.species).name} at Lv ${bak.save.level} from save.bak. The save it replaced is now in save.bak.` }
       }
       case 'reset': {
-        const kept = await backUp($, await $.store.get('save'))
-        const save = freshSave(randomSeed())
+        // Read only: an unconfirmed reset writes nothing, not even the fresh roll or the backup loadFresh makes.
+        const raw = await $.store.get('save')
+        const cur = parseSave(raw)
+        if (rest.trim().toLowerCase() !== 'confirm') {
+          const what = cur.kind === 'ok' ? `${cur.save.nickname ?? species(cur.save.species).name} (Lv ${cur.save.level})` : 'the current save'
+          return { text: `This rolls a new Pokémon at Lv 5 and moves ${what} to save.bak. It works once a day. Run /buddy reset confirm to go ahead.` }
+        }
+        if (cur.kind === 'ok' && cur.save.lastResetDate === local.date) {
+          return { text: 'You already reset today. Reset works once a day; nothing was changed.' }
+        }
+        const kept = await backUp($, raw)
+        const save = freshSave(randomSeed(), local.date)
         await install($, save)
         return { text: `A wild ${species(save.species).name} appeared at Lv ${save.level}! ${kept ? 'Your previous save is in save.bak.' : 'save.bak keeps the backup it already had.'}` }
       }

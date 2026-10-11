@@ -148,7 +148,7 @@ describe('register', () => {
     const store = world(on, { save: 'garbage', 'save.bak': good })
     mock.clock(on)
     await start($)
-    const r = await $.command.run(run('reset'))
+    const r = await $.command.run(run('reset confirm'))
     expect(store.get('save.bak')).toEqual(good)
     expect((store.get('save') as { version: number }).version).toBe(1)
     expect(r.text).toMatch(/save\.bak keeps the backup/)
@@ -159,12 +159,62 @@ describe('register', () => {
     const store = world(on, { save: s })
     mock.clock(on)
     await start($)
-    const r = await $.command.run(run('reset'))
+    const r = await $.command.run(run('reset confirm'))
     expect(r.text).toMatch(/save\.bak/)
     expect(store.get('save.bak')).toEqual(s)
     const fresh = store.get('save') as { version: number; seed: number[] }
     expect(fresh.version).toBe(1)
     expect(fresh.seed).not.toEqual(s.seed)
+  })
+
+  test('reset without confirm says what would happen and changes nothing', async ($, on) => {
+    const s = freshSave([1, 2, 3, 4])
+    const store = world(on, { save: s })
+    mock.clock(on, { now: NOON })
+    await start($)
+    const r = await $.command.run(run('reset'))
+    expect(r.text).toMatch(/\/buddy reset confirm/)
+    expect(r.text).toContain(species(s.species).name)
+    expect(store.get('save')).toEqual(s)
+    expect(store.has('save.bak')).toBe(false)
+  })
+
+  test('reset confirm works once per local day', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    const clock = mock.clock(on, { now: NOON })
+    // Headless: the commands work the same, and no redraw timer runs while the clock moves a day.
+    await start($, false)
+    const first = await $.command.run(run('reset confirm'))
+    expect(first.text).toMatch(/appeared/)
+    const rolled = store.get('save') as { seed: number[]; lastResetDate: string | null }
+    expect(rolled.lastResetDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    const second = await $.command.run(run('reset confirm'))
+    expect(second.text).toMatch(/once a day/)
+    expect((store.get('save') as { seed: number[] }).seed).toEqual(rolled.seed)
+    await clock.advance(24 * 60 * 60 * 1000)
+    const tomorrow = await $.command.run(run('reset confirm'))
+    expect(tomorrow.text).toMatch(/appeared/)
+  })
+
+  test('reset confirm is always allowed over a corrupt save', async ($, on) => {
+    const store = world(on, { save: { ...freshSave([1, 2, 3, 4]), lastResetDate: 'not a date' } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    const r = await $.command.run(run('reset confirm'))
+    expect(r.text).toMatch(/appeared/)
+    expect((store.get('save') as { version: number }).version).toBe(1)
+  })
+
+  test('a save from before lastResetDate loads and can reset', async ($, on) => {
+    const { lastResetDate: _, ...old } = freshSave([1, 2, 3, 4])
+    const store = world(on, { save: old })
+    mock.clock(on, { now: NOON })
+    await start($)
+    const stats = await $.command.run(run('stats'))
+    expect(stats.text).not.toMatch(/could not be read/)
+    const r = await $.command.run(run('reset confirm'))
+    expect(r.text).toMatch(/appeared/)
+    expect(store.get('save.bak')).toEqual({ ...old, lastResetDate: null })
   })
 
   test('feed once a day through the command', async ($, on) => {
