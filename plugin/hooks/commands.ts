@@ -55,6 +55,18 @@ export function feedStreak(save: Save, today: string): number {
   return last !== null && last >= previousDate(today) ? save.counters.feedRun : 0
 }
 
+/** Progress to the next stone of each kind: the work that earns it, done of needed. */
+export function stoneProgress(save: Save, today: string): { name: string; done: number; of: number; work: string }[] {
+  const c = save.counters
+  const leaf = feedStreak(save, today)
+  return [
+    { name: 'Thunder Stone', done: c.greens % 10, of: 10, work: 'green checks' },
+    { name: 'Fire Stone', done: c.commits % 10, of: 10, work: 'commits' },
+    { name: 'Water Stone', done: c.configEdits % 10, of: 10, work: 'config edits' },
+    { name: 'Leaf Stone', done: leaf % 7, of: 7, work: 'feed days' },
+  ]
+}
+
 /** How the species evolves, one line per evolution. */
 export function evolutionHints(sp: Species): string[] {
   return sp.evolutions.map(e =>
@@ -70,7 +82,6 @@ export function statsText(save: Save, today: string): string {
   const skills = skillStats(save).map(k =>
     `  ${k.name.padEnd(9)} ${String(k.value).padStart(2)}  ${k.exp} EXP from ${k.from.map(src => SOURCE_NAMES[src]).join(', ')}`)
   const fed = save.expBySource.feed ?? 0
-  const c = save.counters
   const streak = feedStreak(save, today)
   const hints = evolutionHints(sp)
   return [
@@ -78,10 +89,10 @@ export function statsText(save: Save, today: string): string {
     `${toNext}. Lifetime EXP ${save.lifetimeExp}.`,
     'Skills, grown by the EXP that levels it up:', ...skills,
     ...(fed ? [`  Feeding: ${fed} EXP`] : []),
-    `Bag: ${bag}`,
-    `Stone progress: Thunder Stone ${c.greens % 10}/10 green checks, Fire Stone ${c.commits % 10}/10 commits, Water Stone ${c.configEdits % 10}/10 config edits, Leaf Stone ${streak % 7}/7 feed days.`,
-    `Feed streak: ${streak} day${streak === 1 ? '' : 's'}.`,
     ...(hints.length ? hints : ['Does not evolve.']),
+    `Bag: ${bag}`,
+    `Feed streak: ${streak} day${streak === 1 ? '' : 's'}.`,
+    'Next stones:', ...stoneProgress(save, today).map(p => `  ${p.name} ${p.done}/${p.of} ${p.work}`),
   ].join('\n')
 }
 
@@ -108,20 +119,23 @@ export function dexText(s: Species, owned: boolean): string {
   ].join('\n')
 }
 
+/** Every sub-command and what it does: the help text and the panel's Help tab. */
+export const COMMAND_HELP: readonly [args: string, about: string][] = [
+  ['stats', 'Your Pokémon and progress as text'],
+  ['dex [name or number]', 'A Pokédex entry'],
+  ['feed', 'A Rare Candy, once a day'],
+  ['use <stone>', 'Evolve with a stone from your bag'],
+  ['stop', 'Cancel an evolution in progress'],
+  ['toggle', 'Full or compact view of the band'],
+  ['quiet', 'Speech and the judge on or off'],
+  ['nickname [name]', 'Set a nickname; no name clears it'],
+  ['box', 'Your caught Pokémon'],
+  ['switch <number or name>', 'Make a boxed Pokémon your buddy'],
+  ['release <number> confirm', 'Let a boxed Pokémon go for good'],
+]
+
 export function helpText(command: string): string {
-  return [
-    `/${command} stats: your Pokémon, EXP and progress`,
-    `/${command} dex [name or number]: Pokédex entry`,
-    `/${command} feed: a Rare Candy, once a day`,
-    `/${command} use <stone>: evolve with a stone`,
-    `/${command} stop: cancel an evolution in progress`,
-    `/${command} toggle: compact or full view`,
-    `/${command} quiet: speech and the session judge on or off`,
-    `/${command} nickname <name>: set a nickname (empty to clear)`,
-    `/${command} box: your caught Pokémon`,
-    `/${command} switch <number or name>: make a Pokémon from the box your buddy`,
-    `/${command} release <number> confirm: let a Pokémon from the box go`,
-  ].join('\n')
+  return COMMAND_HELP.map(([args, about]) => `/${command} ${args}: ${about}`).join('\n')
 }
 
 /**

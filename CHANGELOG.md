@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1 (2026-10-11)
+
+- The `/buddy` panel fits the terminal. In a narrow docked pane the skill bars go under the sprite instead of wrapping beside it, and the box's buttons go under each name. In a short inline pane the Feed, view and Mute buttons come right after the skills, so they are not cut off. The panel also asks for a wider dock, though a width you set yourself still wins.
+- The Pokédex tab looks like the Game Boy one: all 151 by number, two columns per page with Prev and Next, ◓ and the name on the ones you have caught and `----------` on the rest. Picking one opens its entry: sprite, number, type, height, weight and text.
+- Tabs and buttons show their keys (`1: Buddy`, `f: Feed`) in the terminal. Feed shows "Fed today" once you have fed, stone progress says what counts toward each stone, and a stone you can use has its Use button next to it in the bag.
+- The Commands tab is now Help, a list of the typed commands. A mistyped `/buddy` command says it is not a command before the help, and `/buddy` always opens on the Buddy tab.
+- The mute key is now `m` instead of `s`, and Stop evolving is on `b`.
+- Releasing a Pokémon asks for confirmation on its own row, not at the bottom of the list.
+- `/buddy stats` lists stone progress one stone per line.
+
 ## 1.2.0 (2026-10-11)
 
 - `/buddy` opens a panel instead of printing text: your Pokémon with its sprite, EXP and skills, your box, the Pokédex and every command as a button, in tabs. Esc closes it. `-p` runs still get text, and a mistyped command opens the Commands tab.

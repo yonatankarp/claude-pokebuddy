@@ -17,7 +17,7 @@ To update, run `claude plugin update pokebuddy@pokebuddy` and restart Claude Cod
 
 ## Quick start
 
-1. `/buddy` opens the panel: your Pokémon, its skills, your box, the Pokédex and every command as a button. Esc closes it.
+1. `/buddy` opens the panel: your Pokémon, its skills, your box, the Pokédex and the command list. In the terminal the number keys switch tabs, the letter shown before a button presses it, and Esc closes it.
 2. Feed it a Rare Candy once a day, from the panel or with `/buddy feed`.
 3. Work as usual: wild Pokémon turn up as you fix checks and commit, and you can switch your buddy to any of them.
 
@@ -90,7 +90,7 @@ A stone evolution only happens when you use the stone, so Eevee becomes whicheve
 
 ## Catching more
 
-Wild Pokémon turn up at random while you work and are caught at once. Each fixed check has a 1 in 5 chance of bringing one, each commit 1 in 10, any turn where Claude uses tools 3 in 100, and a session judged 80 or more an even chance. Every 7th day of a feed streak always brings one, with a better shiny chance. At most 3 a day. They join your box at level 1, and `/buddy switch` or the panel's Box tab makes any of them your buddy. Only your buddy earns EXP, so you choose who to train; skills, stones and the feed streak are yours and carry over. The Pokédex tab shows how many of the 151 you have caught.
+Wild Pokémon turn up at random while you work and are caught at once. Each fixed check has a 1 in 5 chance of bringing one, each commit 1 in 10, any turn where Claude uses tools 3 in 100, and a session judged 80 or more an even chance. Every 7th day of a feed streak always brings one, with a better shiny chance. At most 3 a day. They join your box at level 1, and `/buddy switch` or the panel's Box tab makes any of them your buddy. Only your buddy earns EXP, so you choose who to train; skills, stones and the feed streak are yours and carry over. The Pokédex tab lists all 151 the way the Game Boy one does, with ◓ on the ones you have caught, and opens the entry of any of those.
 
 ## Settings and privacy
 

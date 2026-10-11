@@ -52,6 +52,8 @@ declare module 'claude-code' {
       panelTab: 'buddy' | 'box' | 'dex' | 'commands'
       releasing: number | null
       panelNote: string | null
+      /** The Pokédex tab: the list page it shows, or the entry open over it. */
+      dex: { page: number; entry: number | null }
     }
   }
 }
