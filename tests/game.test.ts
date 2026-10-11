@@ -87,6 +87,30 @@ describe('game', () => {
     expect(useStone(s, 'water-stone').error).toBe('You have no WATER STONE.')
     expect(useStone(as(4, 20, { bag: { 'fire-stone': 1 } }), 'fire-stone').error).toBe('CHARMANDER cannot use a FIRE STONE.')
   })
+  test('applyExp ignores NaN and negative gains', () => {
+    const s = as(4, 10)
+    const r = applyExp(s, { tool: NaN, prompt: -5, commit: 7 })
+    expect(r.save.exp).toBe(s.exp + 7)
+    expect(r.save.lifetimeExp).toBe(s.lifetimeExp + 7)
+    expect(r.save.expBySource.tool ?? 0).toBe(0)
+    expect(r.save.expBySource.prompt ?? 0).toBe(0)
+  })
+  test('applyExp never lowers the level', () => {
+    const s = as(4, 50, { exp: 0 })
+    const r = applyExp(s, { tool: 2 })
+    expect(r.save.level).toBe(50)
+  })
+  test('useStone refuses a non-positive count', () => {
+    const r = useStone(as(133, 20, { bag: { 'fire-stone': -1 } }), 'fire-stone')
+    expect(r.error).toBe('You have no FIRE STONE.')
+    expect(r.save.species).toBe(133)
+  })
+  test('feed streak continues across month and year boundaries', () => {
+    const a = feed(as(1, 10, { feed: { lastDate: '2026-12-31' }, counters: { greens: 0, commits: 0, configEdits: 0, feedRun: 1 } }), { date: '2027-01-01', hour: 9 })
+    expect(a.save.counters.feedRun).toBe(2)
+    const b = feed(as(1, 10, { feed: { lastDate: '2026-02-28' }, counters: { greens: 0, commits: 0, configEdits: 0, feedRun: 1 } }), { date: '2026-03-01', hour: 9 })
+    expect(b.save.counters.feedRun).toBe(2)
+  })
   test('previousDate crosses months and years', () => {
     expect(previousDate('2026-03-01')).toBe('2026-02-28')
     expect(previousDate('2026-01-01')).toBe('2025-12-31')

@@ -17,13 +17,16 @@ type Result = { save: Save; events: GameEvent[] }
 const stoneName = (s: Stone) => s.replace('-', ' ').toUpperCase()
 
 export function applyExp(save: Save, gained: Partial<Record<Source, number>>): Result {
-  const total = Object.values(gained).reduce((a, n) => a + (n ?? 0), 0)
+  const clean = (n: number | undefined) => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0)
+  const total = Object.values(gained).reduce((a, n) => a + clean(n), 0)
   const expBySource = { ...save.expBySource }
-  for (const [k, n] of Object.entries(gained)) expBySource[k as Source] = (expBySource[k as Source] ?? 0) + (n ?? 0)
+  for (const [k, n] of Object.entries(gained)) {
+    if (clean(n) > 0) expBySource[k as Source] = (expBySource[k as Source] ?? 0) + clean(n)
+  }
   const growth = species(save.species).growth
   const cap = expForLevel(growth, MAX_LEVEL)
   const exp = Math.min(cap, save.exp + total)
-  const level = levelForExp(growth, exp)
+  const level = Math.max(save.level, levelForExp(growth, exp))
   const events: GameEvent[] = []
   for (let l = save.level + 1; l <= level; l++) events.push({ kind: 'level', level: l })
   if (level === MAX_LEVEL && save.level < MAX_LEVEL) events.push({ kind: 'max' })
@@ -107,7 +110,7 @@ export function feed(save: Save, local: LocalTime): Result & { fed: boolean; gai
 }
 
 export function useStone(save: Save, stone: Stone): Result & { error?: string } {
-  if (!save.bag[stone]) return { save, events: [], error: `You have no ${stoneName(stone)}.` }
+  if ((save.bag[stone] ?? 0) <= 0) return { save, events: [], error: `You have no ${stoneName(stone)}.` }
   const to = stoneEvolution(save.species, stone)
   if (to === null) return { save, events: [], error: `${species(save.species).name} cannot use a ${stoneName(stone)}.` }
   const spent = { ...save, bag: { ...save.bag, [stone]: (save.bag[stone] ?? 0) - 1 } }
