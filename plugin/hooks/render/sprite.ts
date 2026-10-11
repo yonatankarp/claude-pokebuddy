@@ -50,6 +50,25 @@ export function spriteRows(sprite: Sprite, isShiny: boolean): Run[][] {
   return rows
 }
 
+/** The sprite as SVG markup, one rect per same-colour horizontal run, for surfaces that draw `Svg`. */
+export function spriteSvg(sprite: Sprite, isShiny: boolean): string {
+  const { w, h } = sprite
+  const indexes = pixels(sprite)
+  const pal = isShiny ? sprite.shiny : sprite.palette
+  const rects: string[] = []
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w;) {
+      const k = indexes[y * w + x] ?? 0
+      let end = x + 1
+      while (end < w && indexes[y * w + end] === k) end++
+      const fill = k === 0 ? '' : (pal[k] ?? '')
+      if (fill) rects.push(`<rect x="${x}" y="${y}" width="${end - x}" height="1" fill="${fill}"/>`)
+      x = end
+    }
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" shape-rendering="crispEdges">${rects.join('')}</svg>`
+}
+
 /** The menu icon's size at 1:1. */
 export function artSize(sp: Species) {
   return spriteSize(sp.icon)

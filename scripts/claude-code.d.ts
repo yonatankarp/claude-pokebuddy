@@ -3,7 +3,9 @@ declare module 'claude-code' {
   type Element = (props: Record<string, unknown>) => unknown
   interface Elements {
     terminal: { Box: Element; Text: Element }
+    desktop: { Box: Element; Text: Element; Svg: Element }
   }
+  type RenderSurface = 'terminal' | 'desktop' | 'mobile' | 'vscode'
 }
 declare function h(type: unknown, props: object | null, ...children: unknown[]): unknown
 declare function Fragment(props: object): unknown

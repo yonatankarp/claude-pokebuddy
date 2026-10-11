@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 (2026-10-11)
+
+- The sprite draws as crisp pixel art (SVG) in the Claude desktop app, the editor and mobile, instead of half-block text that broke up there.
+
 ## 1.0.0 (2026-10-11)
 
 First public release.

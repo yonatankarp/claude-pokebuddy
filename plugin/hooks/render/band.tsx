@@ -1,13 +1,17 @@
-import type { Elements } from 'claude-code'
+import type { Elements, RenderSurface } from 'claude-code'
 import { species } from '../data/dex'
 import type { Save } from '../state'
 import type { Species } from '../data/types'
-import { artSize, expBar, fitArt, spriteRows, TYPE_COLOR, type Run } from './sprite'
+import { artSize, expBar, fitArt, spriteRows, spriteSvg, TYPE_COLOR, type Run } from './sprite'
 
 /** `showFull` is the full view, by choice or for a level-up or evolution flash. */
 export type BandView = { save: Save; bubble: string | null; showFull: boolean; evolving: boolean }
 
-export type BandElements = Pick<Elements['terminal'], 'Box' | 'Text'>
+/** `Svg` off the terminal (desktop, editor, mobile): the art is drawn as pixels there, not half-blocks. */
+export type BandElements = Pick<Elements['terminal'], 'Box' | 'Text'> & Partial<Pick<Elements['desktop'], 'Svg'>>
+
+// CSS pixels per sprite pixel where the art is an Svg.
+const SVG_SCALE = 6
 
 /** The bubble beside the art: its width with border and padding, and its text cut into rows. */
 export type Side = { width: number; lines: string[] }
@@ -121,7 +125,7 @@ export function bubbleBox({ Box, Text }: BandElements, side: Side) {
   )
 }
 
-export function band(els: BandElements, view: BandView, maxRows: number, columns: number, isFullscreen: boolean) {
+export function band(els: BandElements, view: BandView, maxRows: number, columns: number, isFullscreen: boolean, surface: RenderSurface = 'terminal') {
   const { Box, Text } = els
   const { save } = view
   const sp = species(save.species)
@@ -144,7 +148,11 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
   )
   const layout = bandLayout(view, maxRows, columns, isFullscreen)
   if (layout === null) return line(true)
-  const art = drawRows(els, artRows(view))
+  const { icon } = sp
+  // The terminal's table hands back an Svg that draws nothing, so the surface decides, not the element.
+  const art = surface !== 'terminal' && els.Svg
+    ? <els.Svg key="svg" source={spriteSvg(icon, save.isShiny)} alt={`${sp.name} sprite`} width={icon.w * SVG_SCALE} height={icon.h * SVG_SCALE} />
+    : drawRows(els, artRows(view))
   if (layout.side === null) {
     return (
       <Box flexDirection="column">

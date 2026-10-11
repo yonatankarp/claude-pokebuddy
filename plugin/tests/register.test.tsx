@@ -908,4 +908,20 @@ describe('register', () => {
       }
     })
   }
+
+  test('the full band draws its art as an Svg on desktop and as half-blocks in the terminal', async ($, on) => {
+    world(on, { save: { ...pika(), view: 'full' as const } })
+    mock.clock(on)
+    await start($)
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({
+        plugin: 'pokebuddy', surface, component: 'AbovePrompt',
+        props: { hasSurvey: false, isWorking: false, maxRows: 60, bodyColumns: 195, scroll: { offset: 0, bodyRows: 60 }, view: {} },
+        viewport: { columns: 200, rows: 60 },
+      })
+      expect(await ui.find({ type: 'Svg' }) !== undefined).toBe(surface === 'desktop')
+      expect(await ui.find({ type: 'Text', text: /▀/ }) !== undefined).toBe(surface === 'terminal')
+      await ui.unmount()
+    }
+  })
 })
