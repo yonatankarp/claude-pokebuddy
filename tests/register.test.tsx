@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { describe, expect, mock, test, type Engine } from 'claude-code/testing'
 import { countsAsPrompt, shouldHandleTurn } from '../hooks/register'
-import { COMMAND, EVOLVE_MS } from '../hooks/config'
+import { COMMAND, EVOLVE_MS, IDLE_FRAME_MS } from '../hooks/config'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
 import { exportBlob, freshSave } from '../hooks/state'
@@ -10,6 +10,7 @@ const usage = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 
 let toasts: string[] = []
 let modelCalls: string[] = []
 let modelReply = '42'
+let redraws = 0
 
 const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
 
@@ -21,6 +22,7 @@ const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stri
 function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
   const store = new Map<string, unknown>(Object.entries(entries).map(([k, v]) => [k, copy(v)]))
   toasts = []
+  redraws = 0
   modelCalls = []
   on('store.get', async (_$, e) => ({ value: copy(store.get(e.key)) }))
   on('store.set', async (_$, e) => { store.set(e.key, copy(e.value)); return { value: undefined } })
@@ -32,7 +34,7 @@ function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
   })
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('ui.toast', async (_$, e) => { toasts.push(e.text); return { value: undefined } })
-  on('ui.invalidate', async () => ({ value: undefined }))
+  on('ui.invalidate', async () => { redraws++; return { value: undefined } })
   return store
 }
 
@@ -344,6 +346,25 @@ describe('register', () => {
     expect(shouldHandleTurn({ isAborted: false })).toBe(true)
     expect(shouldHandleTurn({ agentId: 'a1', isAborted: false })).toBe(false)
   })
+
+  for (const view of ['full', 'compact'] as const) {
+    test(`the idle bob redraws ${view === 'full' ? 'only' : 'never'} in the ${view} view`, async ($, on) => {
+      world(on, { save: { ...freshSave([1, 2, 3, 4]), view } })
+      const clock = mock.clock(on, { now: NOON })
+      await start($)
+      await $.command.run(run('stats'))
+      const ui = await $.ui.mount({
+        plugin: 'pokebuddy', surface: 'terminal', component: 'AbovePrompt',
+        props: { hasSurvey: false, isWorking: false, maxRows: 60, bodyColumns: 195, scroll: { offset: 0, bodyRows: 60 }, view: {} },
+        viewport: { columns: 200, rows: 60 },
+      })
+      const before = redraws
+      await clock.advance(IDLE_FRAME_MS * 3)
+      if (view === 'full') expect(redraws - before >= 3).toBe(true)
+      else expect(redraws - before).toBe(0)
+      await ui.unmount()
+    })
+  }
 
   for (const surface of ['terminal', 'desktop'] as const) {
     test(`band draws compact on ${surface} and survives maxRows 1 and narrow width`, async ($, on) => {

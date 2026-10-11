@@ -19,7 +19,7 @@ function texts(n: unknown): string {
 }
 
 const save = freshSave([1, 2, 3, 4])
-const view = (over: Partial<BandView> = {}): BandView => ({ save, bubble: 'hello there', showFull: true, evolving: false, ...over })
+const view = (over: Partial<BandView> = {}): BandView => ({ save, bubble: 'hello there', showFull: true, evolving: false, frame: 0, ...over })
 
 describe('band', () => {
   test('maxRows 1 draws the single line without a sprite', () => {
@@ -40,6 +40,12 @@ describe('band', () => {
     const rows = (maxRows: number) => ((band(els, view(), maxRows, 200) as { children?: unknown[] }).children ?? []).length - 1
     expect(rows(100)).toBe(spriteSize(sp.sprite).rows)
     expect(rows(spriteSize(sp.sprite).rows)).toBe(spriteSize(sp.icon).rows)
+  })
+  test('the idle frame changes the art, not the band height; compact never animates', () => {
+    const draw = (frame: 0 | 1, showFull = true) => band(els, view({ frame, showFull }), 100, 200) as { children?: unknown[] }
+    expect(draw(1).children!.length).toBe(draw(0).children!.length)
+    expect(texts(draw(1))).not.toBe(texts(draw(0)))
+    expect(texts(draw(1, false))).toBe(texts(draw(0, false)))
   })
   test('evolving shows the old species name', () => {
     const out = texts(band(els, view({ evolving: true, showFull: false }), 1, 120))

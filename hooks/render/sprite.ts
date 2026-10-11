@@ -18,18 +18,23 @@ function indexes(sprite: Sprite): number[] {
   return out
 }
 
-/** Terminal cells the sprite takes at 1:1: one column per pixel, two pixel rows per text row. */
+/**
+ * Terminal cells the sprite takes at 1:1: one column per pixel, two pixel rows per text row, plus the
+ * one pixel row the idle bob moves through, so both frames are the same height.
+ */
 export function spriteSize(sprite: Sprite) {
-  return { rows: Math.ceil(sprite.h / 2), cols: sprite.w }
+  return { rows: Math.ceil((sprite.h + 1) / 2), cols: sprite.w }
 }
 
-export function spriteRows(sprite: Sprite, isShiny: boolean): Run[][] {
+/** Half-block rows of the art; `frame` 1 is the idle bob: the art one pixel row lower. */
+export function spriteRows(sprite: Sprite, isShiny: boolean, frame: 0 | 1 = 0): Run[][] {
   const px = indexes(sprite)
   const pal = isShiny ? sprite.shiny : sprite.palette
-  const w = sprite.w, h = sprite.h
+  const w = sprite.w, h = sprite.h + 1
   const at = (x: number, y: number): string => {
-    if (y >= h) return ''
-    const k = px[y * w + x] ?? 0
+    const src = y - frame
+    if (y >= h || src < 0 || src >= sprite.h) return ''
+    const k = px[src * w + x] ?? 0
     return k === 0 ? '' : (pal[k] ?? '')
   }
   const rows: Run[][] = []

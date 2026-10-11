@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, PromptOrigin, Register, ToolCallResult } from 'claude-code'
+import type { EngineInterface, PromptOrigin, Register, Timer, ToolCallResult } from 'claude-code'
 import { dexText, helpText, parseArgs, parseStone, statsText } from './commands'
-import { COMMAND, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
+import { COMMAND, EVOLVE_MS, FLASH_MS, IDLE_FRAME_MS, PENDING_LOG_MAX } from './config'
 import { findSpecies, species } from './data/dex'
 import { applyExp, applyTurn, cancelEvolution, feed, finishEvolution, useStone, type GameEvent } from './game'
 import { judge, lineFacts, lineSession, tagLine } from './judge'
@@ -130,6 +130,9 @@ export const register: Register = (on, options) => {
   let offset: number | null = null
   // Until a session.start says otherwise (a reload may not raise one), assume a person is there.
   let isInteractive = true
+  // Whether the last band drawn was the full view: only then does the idle bob redraw.
+  let isFullDrawn = false
+  let idle: Timer | null = null
 
   on('session.start', async ($, e, next) => {
     blocked.isToasted = false
@@ -139,6 +142,10 @@ export const register: Register = (on, options) => {
     // A reload or exit inside the evolution window drops its timer; finish it now.
     const loaded = await mutate($, s => (s.evolution ? finishEvolution(s) : { save: s }))
     if (!isInteractive) return next(e)
+    idle?.cancel()
+    idle = $.clock.every(IDLE_FRAME_MS, () => {
+      if (isFullDrawn) $.ui.invalidate('ui.render')
+    })
     // Take the finished sessions' lines first, then score them, so no other session judges them again.
     // This session's own lines stay for the session after it. Quiet means no model calls: they are dropped.
     const sid = await $.session.id()
@@ -290,16 +297,20 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    isFullDrawn = false
     if (e.props.hasSurvey) return next(e)
     const save = await read($, saveAtom)
     if (!save) return next(e)
     const now = await $.clock.now()
     const isFlash = (await read($, flashAtom)) > now
+    const showFull = save.view === 'full' || isFlash
+    isFullDrawn = showFull
     const view = {
       save,
       bubble: await read($, bubbleAtom),
-      showFull: save.view === 'full' || isFlash,
+      showFull,
       evolving: save.evolution !== null,
+      frame: (Math.floor(now / IDLE_FRAME_MS) % 2) as 0 | 1,
     }
     return band($.ui.resolve(e), view, e.props.maxRows, e.props.bodyColumns)
   })

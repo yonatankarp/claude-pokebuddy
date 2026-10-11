@@ -35,7 +35,7 @@ The command is `/buddy`. In some contexts Claude Code shows it namespaced as `/p
 | `/buddy restore` | Swap `save.bak` back in |
 | `/buddy reset` | Roll a new Pokémon; the current save goes to `save.bak` |
 
-The full view, the default, draws the Crystal sprite above a one-line summary when the band has room, and the smaller Gen 7 menu icon when it does not. The compact view is the summary line alone.
+The full view, the default, draws the Crystal sprite above a one-line summary when the band has room, and the smaller Gen 7 menu icon when it does not, with a two-frame idle bob. The compact view is the summary line alone and never animates.
 
 Saves live in the plugin's store, one per machine. `export` and `import` move a save between machines. The blob carries a 32-bit checksum that catches damage, not tampering. One backup slot, `save.bak`, keeps the previous save on `import`, `restore` and `reset`. If the save cannot be read, nothing is rerolled: it is copied to `save.bak` (unless that already holds a readable save), the buddy goes read-only and a notice says to run `/buddy restore` or `/buddy reset`.
 

@@ -5,6 +5,8 @@ export const SPEECH_TIMEOUT_MS = 4000
 export const JUDGE_TIMEOUT_MS = 15000
 export const FLASH_MS = 6000
 export const EVOLVE_MS = 4000
+// One frame of the full view's idle bob.
+export const IDLE_FRAME_MS = 700
 // Compared with AbovePrompt's bodyColumns, which is the terminal width less the prompt's margins
 // (about 5 columns), so 55 here hides the bubble below a terminal of about 60 columns.
 export const COMPACT_MIN_COLUMNS = 55
