@@ -1,12 +1,14 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PromptOrigin, Register, Timer, ToolCallResult } from 'claude-code'
 import { dexText, helpText, parseArgs, parseStone, statsText } from './commands'
-import { COMMAND, EVOLVE_MS, FLASH_MS, IDLE_FRAME_MS, PENDING_LOG_MAX } from './config'
+import { COMMAND, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX, TICK_MS } from './config'
 import { findSpecies, species } from './data/dex'
 import { applyExp, applyTurn, cancelEvolution, feed, finishEvolution, useStone, type GameEvent } from './game'
 import { judge, lineFacts, lineSession, tagLine } from './judge'
 import { localTime, readOffset } from './localtime'
-import { band } from './render/band'
+import { band, bandArt, type BandView } from './render/band'
+import { pane, paneArt, PANE_TEXT_ROWS } from './render/pane'
+import { artSize } from './render/sprite'
 import { signalsFromTool, type Outcome } from './signals'
 import { speak, turnFacts } from './speech'
 import { exportBlob, freshSave, importBlob, parseSave, type Save } from './state'
@@ -123,6 +125,23 @@ function clients($: EngineInterface) {
   }
 }
 
+/** What the band and the pane draw at this moment; null with no save to draw. */
+async function drawView($: EngineInterface): Promise<BandView | null> {
+  const save = await read($, saveAtom)
+  if (!save) return null
+  const now = await $.clock.now()
+  const flashUntil = await read($, flashAtom)
+  const isFlash = flashUntil > now
+  return {
+    save,
+    bubble: await read($, bubbleAtom),
+    showFull: save.view === 'full' || isFlash,
+    evolving: save.evolution !== null,
+    now,
+    flashStart: isFlash ? flashUntil - FLASH_MS : null,
+  }
+}
+
 export const register: Register = (on, options) => {
   const model = String(options.speechModel ?? 'haiku')
   let tally: Tally = emptyTally()
@@ -130,9 +149,10 @@ export const register: Register = (on, options) => {
   let offset: number | null = null
   // Until a session.start says otherwise (a reload may not raise one), assume a person is there.
   let isInteractive = true
-  // Whether the last band drawn was the full view: only then does the idle bob redraw.
-  let isFullDrawn = false
-  let idle: Timer | null = null
+  // Whether the last band, or the pane, drawn shows the animated Crystal sprite: only then do redraws run.
+  let isBandAnimated = false
+  let isPaneAnimated = false
+  let redraw: Timer | null = null
 
   on('session.start', async ($, e, next) => {
     blocked.isToasted = false
@@ -142,10 +162,14 @@ export const register: Register = (on, options) => {
     // A reload or exit inside the evolution window drops its timer; finish it now.
     const loaded = await mutate($, s => (s.evolution ? finishEvolution(s) : { save: s }))
     if (!isInteractive) return next(e)
-    idle?.cancel()
-    idle = $.clock.every(IDLE_FRAME_MS, () => {
-      if (isFullDrawn) $.ui.invalidate('ui.render')
+    // A reload raises session.start again: keep one timer, and forget a pane that closed meanwhile.
+    redraw?.cancel()
+    redraw = $.clock.every(TICK_MS * 2, () => {
+      if (isBandAnimated || isPaneAnimated) $.ui.invalidate('ui.render')
     })
+    try {
+      isPaneAnimated = isPaneAnimated && (await $.ui.panes()).some(p => p.id === 'pokebuddy')
+    } catch {}
     // Take the finished sessions' lines first, then score them, so no other session judges them again.
     // This session's own lines stay for the session after it. Quiet means no model calls: they are dropped.
     const sid = await $.session.id()
@@ -253,6 +277,15 @@ export const register: Register = (on, options) => {
         const r = await mutate($, s => ({ save: { ...s, view: s.view === 'full' ? 'compact' as const : 'full' as const } }))
         return r ? { text: `Showing the ${r.save.view} view.` } : blockedText()
       }
+      case 'pane': {
+        const s = await loadFresh($)
+        if (!s) return blockedText()
+        await update($, saveAtom, () => s)
+        const name = s.nickname ?? species(s.species).name
+        const rows = artSize(species(s.species), 'sprite').rows + PANE_TEXT_ROWS
+        const opened = await $.ui.open({ id: 'pokebuddy', title: name, rows })
+        return { text: opened.isPlaced ? `${name} is in the pane.` : `${name}'s pane waits for room: ${opened.reason}` }
+      }
       case 'quiet': {
         const r = await mutate($, s => ({ save: { ...s, speechOn: !s.speechOn } }))
         if (!r) return blockedText()
@@ -297,21 +330,25 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    isFullDrawn = false
+    isBandAnimated = false
     if (e.props.hasSurvey) return next(e)
-    const save = await read($, saveAtom)
-    if (!save) return next(e)
-    const now = await $.clock.now()
-    const isFlash = (await read($, flashAtom)) > now
-    const showFull = save.view === 'full' || isFlash
-    isFullDrawn = showFull
-    const view = {
-      save,
-      bubble: await read($, bubbleAtom),
-      showFull,
-      evolving: save.evolution !== null,
-      frame: (Math.floor(now / IDLE_FRAME_MS) % 2) as 0 | 1,
-    }
+    const view = await drawView($)
+    if (!view) return next(e)
+    isBandAnimated = bandArt(view, e.props.maxRows, e.props.bodyColumns) === 'sprite'
     return band($.ui.resolve(e), view, e.props.maxRows, e.props.bodyColumns)
   })
+
+  on('ui.render', { component: 'Pane', requestId: 'pokebuddy' }, async ($, e) => {
+    const { Box, Text } = $.ui.resolve(e)
+    const view = await drawView($)
+    const rows = e.props.scroll.bodyRows, columns = e.props.bodyColumns
+    isPaneAnimated = view !== null && paneArt(view, rows, columns) === 'sprite'
+    if (!view) return <Box><Text dimColor>{blocked.reason ?? 'No Pokémon yet.'}</Text></Box>
+    return pane({ Box, Text }, view, rows, columns)
+  })
+
+  on('ui.close', async ($, e, next) => {
+    if (e.id === 'pokebuddy') isPaneAnimated = false
+    return next(e)
+  }).catch(($, e, next) => next(e))
 }

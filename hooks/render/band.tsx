@@ -2,12 +2,33 @@ import type { Elements } from 'claude-code'
 import { COMPACT_MIN_COLUMNS } from '../config'
 import { species } from '../data/dex'
 import type { Save } from '../state'
-import { expBar, pickArt, spriteRows, TYPE_COLOR } from './sprite'
+import { frameAt } from './anim'
+import { expBar, frameRows, pickArt, spriteRows, TYPE_COLOR, type Art, type Run } from './sprite'
 
-/** `frame` is the idle bob's frame, drawn only in the full view. */
-export type BandView = { save: Save; bubble: string | null; showFull: boolean; evolving: boolean; frame: 0 | 1 }
+/** `now` picks the animation frame; `flashStart`, set while a level-up or evolution flash runs, plays the intro. */
+export type BandView = { save: Save; bubble: string | null; showFull: boolean; evolving: boolean; now: number; flashStart: number | null }
 
 export type BandElements = Pick<Elements['terminal'], 'Box' | 'Text'>
+
+/** The art the band draws above its line: only the Crystal sprite animates; null is the line alone. */
+export function bandArt(view: BandView, maxRows: number, columns: number): Art | null {
+  return view.showFull ? pickArt(species(view.save.species), maxRows, columns) : null
+}
+
+/** The rows of `art` as drawn at `view.now`: the sprite's current animation frame, or the still icon. */
+export function artRows(view: BandView, art: Art): Run[][] {
+  const sp = species(view.save.species)
+  if (art === 'icon') return spriteRows(sp.icon, view.save.isShiny)
+  return frameRows(sp, frameAt(sp.anim, sp.frames.px.length, view.now, view.flashStart), view.save.isShiny)
+}
+
+export function drawRows({ Box, Text }: BandElements, rows: Run[][]) {
+  return rows.map((runs, y) => (
+    <Box key={`r${y}`} flexDirection="row">
+      {runs.map((r, x) => <Text key={`c${y}-${x}`} color={r.fg} backgroundColor={r.bg}>{r.text}</Text>)}
+    </Box>
+  ))
+}
 
 export function band(els: BandElements, view: BandView, maxRows: number, columns: number) {
   const { Box, Text } = els
@@ -25,17 +46,11 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
       {view.bubble && columns >= COMPACT_MIN_COLUMNS && <Text dimColor wrap="truncate-end"> │ “{view.bubble}”</Text>}
     </Box>
   )
-  if (!view.showFull) return line
-  const art = pickArt(sp, maxRows, columns)
+  const art = bandArt(view, maxRows, columns)
   if (art === null) return line
-  const rows = spriteRows(sp[art], save.isShiny, view.frame)
   return (
     <Box flexDirection="column">
-      {rows.map((runs, y) => (
-        <Box key={`r${y}`} flexDirection="row">
-          {runs.map((r, x) => <Text key={`c${y}-${x}`} color={r.fg} backgroundColor={r.bg}>{r.text}</Text>)}
-        </Box>
-      ))}
+      {drawRows(els, artRows(view, art))}
       {line}
     </Box>
   )

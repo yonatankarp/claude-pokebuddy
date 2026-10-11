@@ -1,10 +1,12 @@
 import type { On } from 'claude-code'
 import { describe, expect, mock, test, type Engine } from 'claude-code/testing'
 import { countsAsPrompt, shouldHandleTurn } from '../hooks/register'
-import { COMMAND, EVOLVE_MS, IDLE_FRAME_MS } from '../hooks/config'
+import { COMMAND, EVOLVE_MS, TICK_MS } from '../hooks/config'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
 import { exportBlob, freshSave } from '../hooks/state'
+import { artSize } from '../hooks/render/sprite'
+import { PANE_TEXT_ROWS } from '../hooks/render/pane'
 
 const usage = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
 let toasts: string[] = []
@@ -347,21 +349,86 @@ describe('register', () => {
     expect(shouldHandleTurn({ agentId: 'a1', isAborted: false })).toBe(false)
   })
 
-  for (const view of ['full', 'compact'] as const) {
-    test(`the idle bob redraws ${view === 'full' ? 'only' : 'never'} in the ${view} view`, async ($, on) => {
-      world(on, { save: { ...freshSave([1, 2, 3, 4]), view } })
+  const band = ($: Engine, maxRows = 60) => $.ui.mount({
+    plugin: 'pokebuddy', surface: 'terminal', component: 'AbovePrompt',
+    props: { hasSurvey: false, isWorking: false, maxRows, bodyColumns: 195, scroll: { offset: 0, bodyRows: maxRows }, view: {} },
+    viewport: { columns: 200, rows: 60 },
+  })
+  const pika = (view: 'full' | 'compact' = 'full') => ({ ...freshSave([1, 2, 3, 4]), species: 25, exp: expForLevel(species(25).growth, 5), view })
+
+  for (const [name, view, maxRows, animates] of [
+    ['the band draws the animated sprite', 'full', 60, true],
+    ['the band falls back to the still icon', 'full', artSize(species(25), 'icon').rows + 1, false],
+    ['the band is compact', 'compact', 60, false],
+  ] as const) {
+    test(`redraws ${animates ? 'run' : 'stop'} while ${name}`, async ($, on) => {
+      world(on, { save: pika(view) })
       const clock = mock.clock(on, { now: NOON })
       await start($)
       await $.command.run(run('stats'))
-      const ui = await $.ui.mount({
-        plugin: 'pokebuddy', surface: 'terminal', component: 'AbovePrompt',
-        props: { hasSurvey: false, isWorking: false, maxRows: 60, bodyColumns: 195, scroll: { offset: 0, bodyRows: 60 }, view: {} },
-        viewport: { columns: 200, rows: 60 },
-      })
+      const ui = await band($, maxRows)
       const before = redraws
-      await clock.advance(IDLE_FRAME_MS * 3)
-      if (view === 'full') expect(redraws - before >= 3).toBe(true)
+      await clock.advance(TICK_MS * 2 * 3 + 1)
+      if (animates) expect(redraws - before >= 3).toBe(true)
       else expect(redraws - before).toBe(0)
+      await ui.unmount()
+    })
+  }
+
+  test('a pane too small for the sprite draws the still icon and asks for no redraws', async ($, on) => {
+    world(on, { save: pika('compact') })
+    on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+    on('ui.panes', async () => ({ value: [] }))
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await $.command.run(run('pane'))
+    const icon = artSize(species(25), 'icon')
+    const ui = await $.ui.mount({
+      plugin: 'pokebuddy', surface: 'terminal', component: 'Pane', requestId: 'pokebuddy',
+      props: { title: 'PIKACHU', isFocused: false, bodyColumns: 60, placement: 'inline', scroll: { offset: 0, bodyRows: icon.rows + PANE_TEXT_ROWS }, view: {} },
+      viewport: { columns: 200, rows: 50 },
+    })
+    expect(await ui.find({ type: 'Text', text: /PIKACHU/ })).toBeDefined()
+    const before = redraws
+    await clock.advance(TICK_MS * 2 * 3 + 1)
+    expect(redraws - before).toBe(0)
+    await ui.unmount()
+  })
+
+  test('a session start that fires again keeps one redraw timer', async ($, on) => {
+    world(on, { save: pika() })
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await start($)
+    await $.command.run(run('stats'))
+    const ui = await band($)
+    const before = redraws
+    await clock.advance(TICK_MS * 2 * 4 + 1)
+    expect(redraws - before).toBe(4)
+    await ui.unmount()
+  })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    test(`/buddy pane opens a pane that draws and animates on ${surface}`, async ($, on) => {
+      world(on, { save: { ...pika('compact'), nickname: 'Sparky' } })
+      const opened: { id: string; title?: string }[] = []
+      on('ui.open', async (_$, e) => { opened.push(e); return { value: { isPlaced: true as const } } })
+      on('ui.panes', async () => ({ value: [] }))
+      const clock = mock.clock(on, { now: NOON })
+      await start($)
+      const r = await $.command.run(run('pane'))
+      expect(opened).toEqual([expect.objectContaining({ id: 'pokebuddy', title: 'Sparky' })])
+      expect(r.text).toMatch(/pane/)
+      const ui = await $.ui.mount({
+        plugin: 'pokebuddy', surface, component: 'Pane', requestId: 'pokebuddy',
+        props: { title: 'Sparky', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
+        viewport: { columns: 200, rows: 50 },
+      })
+      expect(await ui.find({ type: 'Text', text: /Sparky/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /▀|▄/ })).toBeDefined()
+      const before = redraws
+      await clock.advance(TICK_MS * 2 * 3 + 1)
+      expect(redraws - before >= 3).toBe(true)
       await ui.unmount()
     })
   }

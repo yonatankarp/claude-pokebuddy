@@ -1,4 +1,4 @@
-import { base64Decode } from '../codec'
+import { base64Decode, rleDecode } from '../codec'
 import { species } from '../data/dex'
 import type { PokemonType, Species, Sprite } from '../data/types'
 import { expForLevel, MAX_LEVEL } from '../exp'
@@ -6,35 +6,29 @@ import type { Save } from '../state'
 
 export type Run = { text: string; fg?: string; bg?: string }
 
+type Pixels = { w: number; h: number; indexes: readonly number[] }
+
 const decodeCache = new Map<string, number[]>()
-function indexes(sprite: Sprite): number[] {
-  const hit = decodeCache.get(sprite.px)
-  if (hit) return hit
-  const bytes = base64Decode(sprite.px)
-  const out: number[] = []
-  for (const b of bytes) out.push(b >> 4, b & 15)
-  out.length = sprite.w * sprite.h
-  decodeCache.set(sprite.px, out)
-  return out
+function cached(px: string, w: number, h: number, decode: (bytes: Uint8Array) => number[]): Pixels {
+  let out = decodeCache.get(px)
+  if (!out) {
+    out = decode(base64Decode(px))
+    out.length = w * h
+    decodeCache.set(px, out)
+  }
+  return { w, h, indexes: out }
+}
+const nibbles = (bytes: Uint8Array) => Array.from(bytes).flatMap(b => [b >> 4, b & 15])
+
+/** Terminal cells the art takes at 1:1: one column per pixel, two pixel rows per text row. */
+export function spriteSize(art: { w: number; h: number }) {
+  return { rows: Math.ceil(art.h / 2), cols: art.w }
 }
 
-/**
- * Terminal cells the sprite takes at 1:1: one column per pixel, two pixel rows per text row, plus the
- * one pixel row the idle bob moves through, so both frames are the same height.
- */
-export function spriteSize(sprite: Sprite) {
-  return { rows: Math.ceil((sprite.h + 1) / 2), cols: sprite.w }
-}
-
-/** Half-block rows of the art; `frame` 1 is the idle bob: the art one pixel row lower. */
-export function spriteRows(sprite: Sprite, isShiny: boolean, frame: 0 | 1 = 0): Run[][] {
-  const px = indexes(sprite)
-  const pal = isShiny ? sprite.shiny : sprite.palette
-  const w = sprite.w, h = sprite.h + 1
+function rowsOf({ w, h, indexes }: Pixels, pal: readonly string[]): Run[][] {
   const at = (x: number, y: number): string => {
-    const src = y - frame
-    if (y >= h || src < 0 || src >= sprite.h) return ''
-    const k = px[src * w + x] ?? 0
+    if (y >= h) return ''
+    const k = indexes[y * w + x] ?? 0
     return k === 0 ? '' : (pal[k] ?? '')
   }
   const rows: Run[][] = []
@@ -55,15 +49,36 @@ export function spriteRows(sprite: Sprite, isShiny: boolean, frame: 0 | 1 = 0): 
   return rows
 }
 
+/** Half-block rows of a still sprite. */
+export function spriteRows(sprite: Sprite, isShiny: boolean): Run[][] {
+  return rowsOf(cached(sprite.px, sprite.w, sprite.h, nibbles), isShiny ? sprite.shiny : sprite.palette)
+}
+
+/** Half-block rows of one Crystal animation frame, in the sprite's palette. */
+export function frameRows(sp: Species, frame: number, isShiny: boolean): Run[][] {
+  const { w, h, px } = sp.frames
+  return rowsOf(cached(px[frame] ?? px[0]!, w, h, rleDecode), isShiny ? sp.sprite.shiny : sp.sprite.palette)
+}
+
+/** `sprite` is the animated Crystal sprite, `icon` the still menu icon. */
 export type Art = 'sprite' | 'icon'
 
-/** The art to draw above the one-row compact line, never scaled: the Crystal sprite, else the menu icon, else none. */
-export function pickArt(sp: Species, maxRows: number, columns: number): Art | null {
+export function artSize(sp: Species, art: Art) {
+  return spriteSize(art === 'sprite' ? sp.frames : sp.icon)
+}
+
+/** The art that fits in `rows` x `columns`, never scaled: the Crystal sprite, else the menu icon, else none. */
+export function fitArt(sp: Species, rows: number, columns: number): Art | null {
   for (const art of ['sprite', 'icon'] as const) {
-    const { rows, cols } = spriteSize(sp[art])
-    if (rows + 1 <= maxRows && cols <= columns) return art
+    const size = artSize(sp, art)
+    if (size.rows <= rows && size.cols <= columns) return art
   }
   return null
+}
+
+/** The art to draw above the band's one-row line. */
+export function pickArt(sp: Species, maxRows: number, columns: number): Art | null {
+  return fitArt(sp, maxRows - 1, columns)
 }
 
 export const TYPE_COLOR: Record<PokemonType, string> = {
