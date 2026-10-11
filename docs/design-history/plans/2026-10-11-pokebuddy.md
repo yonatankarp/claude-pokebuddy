@@ -10,7 +10,7 @@
 
 **Tech Stack:** Claude Code function-hooks mod API (build 2.1.296, `claude-code` and `claude-code/testing`), TypeScript 5.4+, JSX with `h`; Node 22 with `tsx`, `pngjs` and `node:test` for the build scripts only.
 
-**Spec:** `docs/superpowers/specs/2026-10-11-pokebuddy-design.md`
+**Spec:** `docs/design-history/specs/2026-10-11-pokebuddy-design.md`
 
 ## Global Constraints
 

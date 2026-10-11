@@ -7,10 +7,10 @@ A Gen 1 Pokémon lives above your Claude Code prompt, reacts to each turn in a l
 ## Install
 
 ```
-claude plugin install pokebuddy --marketplace yonatankarp/pokebuddy
+/plugin install pokebuddy --marketplace yonatankarp/pokebuddy
 ```
 
-This installs it for your user, so your buddy follows you into every project. Then start a new Claude Code session; your buddy is rolled on the first one and says hello with a toast. The install may print "2 userConfig options not yet set", but both settings have defaults, so you can ignore it. You need Claude Code 2.1.296 or newer.
+It is active at once. Ignore any "2 userConfig options not yet set" note: both settings have defaults. Needs Claude Code 2.1.296 or newer.
 
 ## Quick start
 
@@ -41,7 +41,7 @@ In some places Claude Code shows the command as `/pokebuddy:buddy`.
 
 ## How it grows
 
-Your Pokémon earns EXP from prompts, tool use, commits, pushes and PRs, fixing failing checks, a daily Rare Candy and a score for each finished session. It levels at its Gen 1 growth rate and evolves by level, by stone or by trade, just like the original games. One in 512 is shiny, with its alternate colours and a ★ by its name. On a short terminal the full view gives way to the one-line view when it would take more than half the screen.
+Your Pokémon earns EXP from prompts, tool use, commits, pushes and PRs, fixing failing checks, a daily Rare Candy and a score for each finished session. It levels at its Gen 1 growth rate and evolves by level, by stone or by trade, just like the original games. One in 512 is shiny, with its alternate colours and a ★ by its name.
 
 <p><img src="docs/images/shiny.svg" width="49%" alt="a shiny Pikachu"> <img src="docs/images/evolving.svg" width="49%" alt="Charmander evolving at level 16"></p>
 
@@ -85,20 +85,20 @@ A stone evolution only happens when you use the stone, so Eevee becomes whicheve
 
 ## Settings and privacy
 
-Change these with `/plugin configure pokebuddy@pokebuddy`. Both have defaults.
+Change them in `/config` (each option is a row there) or under `pluginConfigs.pokebuddy` in settings.json.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `speechModel` | `haiku` | The model for speech and the session judge |
 | `speechContext` | `conversation` | `conversation` lets speech react to what you asked and what Claude answered; `facts` sends only a summary |
 
-Your buddy makes at most one small model call per turn, plus one to score earlier sessions, and your prompts and Claude's answers are never saved. `/buddy quiet` stops every model call.
+One small model call per turn at most; prompts and answers are never saved. `/buddy quiet` stops all calls.
 
 <details><summary>What is sent and what is saved</summary>
 
 In an interactive session with speech on, your buddy makes at most one model call per completed turn, and at most one more when a session starts, only if earlier sessions are waiting to be scored. Every call carries your buddy's name, species, level, nature and whether it is shiny, plus a short summary of the turn: counts of prompts, tool calls, commits, pushes and PRs, the check commands you ran with whether they passed (the runner and up to two plain words, like `npm test`, never flags, paths or values), and the names of config files you edited (never their paths).
 
-With `conversation`, the turn's call also includes the first 300 characters of your last prompt and of Claude's answer. With `facts`, that is all it sends. Scoring a session always gets the summaries alone.
+With `conversation`, the turn's call also includes the first 300 characters of the turn's first prompt and of Claude's answer. With `facts`, that is all it sends. Scoring a session always gets the summaries alone.
 
 Your save keeps the summary lines of sessions not yet scored, and the check names it uses to spot a fix; both are part of `/buddy export`. Prompt and answer text are never saved.
 
@@ -106,13 +106,19 @@ Your save keeps the summary lines of sessions not yet scored, and the check name
 
 ## Your save
 
-Your save lives in your Claude Code config folder, one per folder; `/buddy export` and `/buddy import` move it. Import, restore and reset keep the save they replace in one backup slot that `/buddy restore` swaps back; a damaged save never overwrites a good backup. A reset needs `/buddy reset confirm` and works once a day.
+It lives in your Claude Code config folder; `/buddy export` and `/buddy import` move it, and one backup slot keeps the save they or a reset replace.
+
+<details><summary>Backup, recovery and uninstall</summary>
+
+`/buddy restore` swaps the backup slot back in; a damaged save never overwrites a good backup. A reset needs `/buddy reset confirm` and works once a day.
 
 If your save cannot be read, your buddy says so and tells you what can help: `/buddy restore` when the backup slot is good, otherwise `/buddy reset confirm` or `/buddy import`. A save from a newer version is left alone until you update the plugin.
 
 An export is a convenience, not a signature: the checksum only catches damage from copying, so import only blobs you trust.
 
 To uninstall, run `/plugin uninstall pokebuddy`, after an export if you might come back.
+
+</details>
 
 ## Disclaimer and credits
 
