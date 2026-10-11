@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PromptOrigin, Register, ToolCallResult } from 'claude-code'
 import { runCommand, type CommandIO } from './commands'
-import { DENIED_MAX, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
+import { EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
 import { species } from './data/dex'
 import { stoneName } from './data/types'
 import { applyExp, applyTurn, finishEvolution, type GameEvent } from './game'
@@ -43,15 +43,11 @@ async function hasAppClient($: EngineInterface): Promise<boolean> {
   return (await $.session.surfaces()).some(s => s !== 'terminal')
 }
 
-/** Calls the permission check denied: they reach tool.call as errors, which are not failures. */
-const denied = new Set<string>()
-function markDenied(id: string) {
-  denied.add(id)
-  if (denied.size > DENIED_MAX) denied.delete(denied.values().next().value!)
-}
-
-function outcome(ran: ToolCallResult, id: string): Outcome {
-  if (ran.deny !== undefined || denied.has(id)) return 'unknown'
+// shortcut: a call the person denies at the permission prompt reads as failed here, so a denied check
+// followed by a passing run counts as a fix. A tool.check hook could tell them apart, but the plugin
+// directory accepts no hook there that does more than pass the decision on.
+function outcome(ran: ToolCallResult): Outcome {
+  if (ran.deny !== undefined) return 'unknown'
   return ran.isError === true ? 'failed' : 'ok'
 }
 
@@ -233,16 +229,10 @@ export const register: Register = (on, options) => {
     return result
   }).catch(($, e, next) => next(e))
 
-  on('tool.check', async ($, e, next) => {
-    const verdict = await next(e)
-    if (verdict.decision === 'deny' && e.tool_use_id !== undefined) markDenied(e.tool_use_id)
-    return verdict
-  }).catch(($, e, next) => next(e))
-
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     try {
-      tally.signals.push(...signalsFromTool(String(e.tool), e as unknown as Record<string, unknown>, outcome(ran, e.tool_use_id), ran.text ?? ''))
+      tally.signals.push(...signalsFromTool(String(e.tool), e as unknown as Record<string, unknown>, outcome(ran), ran.text ?? ''))
     } catch {}
     return ran
   }).catch(($, e, next) => next(e))
