@@ -138,11 +138,15 @@ export function expBarTexts({ Text }: BandElements, save: Save, width: number, c
 
 /** The active Pokémon's icon: pixels as an Svg in the app, half-blocks in the terminal. */
 export function buddyArt(els: BandElements, save: Save, isApp: boolean) {
-  const sp = species(save.species)
+  return speciesArt(els, species(save.species), save.isShiny, isApp)
+}
+
+/** A species' icon: an SVG in the app, half-block rows in the terminal. */
+export function speciesArt(els: BandElements, sp: Species, isShiny: boolean, isApp: boolean) {
   const { icon } = sp
   return isApp && els.Svg
-    ? <els.Svg key="svg" source={spriteSvg(icon, save.isShiny)} alt={`${sp.name} sprite`} width={icon.w * SVG_SCALE} height={icon.h * SVG_SCALE} />
-    : drawRows(els, spriteRows(icon, save.isShiny))
+    ? <els.Svg key="svg" source={spriteSvg(icon, isShiny)} alt={`${sp.name} sprite`} width={icon.w * SVG_SCALE} height={icon.h * SVG_SCALE} />
+    : drawRows(els, spriteRows(icon, isShiny))
 }
 
 export function band(els: BandElements, view: BandView, maxRows: number, columns: number, isFullscreen: boolean, surface: RenderSurface = 'terminal') {
