@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import type { Signal } from '../hooks/signals'
+import { configSignal, type Signal } from '../hooks/signals'
 import { emptyTally, scoreTally, TURN_CAP, withoutReds, type Tally } from '../hooks/tally'
 
 const tool: Signal = { kind: 'tool' }
@@ -17,7 +17,7 @@ describe('scoreTally', () => {
   })
   test('config edits count once per file per turn', () => {
     const t = { ...emptyTally(), signals: [
-      { kind: 'config', path: '/a/CLAUDE.md' }, { kind: 'config', path: '/a/CLAUDE.md' }, { kind: 'config', path: '/b/CLAUDE.md' },
+      configSignal('/a/CLAUDE.md'), configSignal('/a/CLAUDE.md'), configSignal('/b/CLAUDE.md'),
     ] as Signal[] }
     const r = scoreTally(t, {})
     expect(r.bySource.config).toBe(50)
@@ -62,7 +62,7 @@ describe('scoreTally', () => {
     const many = (n: number, f: (i: number) => Signal) => Array.from({ length: n }, (_, i) => f(i))
     const reds = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`c${i}`, true]))
     const t = { ...emptyTally(), signals: [
-      ...many(5, i => ({ kind: 'config', path: `/r/.claude/agents/a${i}.md` })),
+      ...many(5, i => configSignal(`/r/.claude/agents/a${i}.md`)),
       ...many(5, () => ({ kind: 'commit' })),
       ...many(2, () => ({ kind: 'push' })), { kind: 'pr' },
       ...many(5, i => ({ kind: 'check', key: `c${i}`, ok: true })),

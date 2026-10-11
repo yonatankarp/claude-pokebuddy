@@ -1,5 +1,5 @@
 import { LOG_LINE_MAX } from './config'
-import { rekeyCheck } from './signals'
+import { fileName, rekeyCheck } from './signals'
 
 const oneLine = (text: string) => text.replace(/[\t\r\n]+/g, ' ')
 
@@ -11,7 +11,7 @@ const oneLine = (text: string) => text.replace(/[\t\r\n]+/g, ' ')
 export const tagLine = (sid: string, nowMs: number, facts: string) =>
   `${oneLine(sid)}\t${Math.max(0, Math.floor(nowMs))}\t${oneLine(facts)}`.slice(0, LOG_LINE_MAX)
 
-export type LogLine = { sid: string; ms: number | null; facts: string }
+type LogLine = { sid: string; ms: number | null; facts: string }
 
 export function parseLine(line: string): LogLine {
   const parts = line.split('\t')
@@ -48,13 +48,26 @@ export function takeEnded(log: readonly string[], finished: readonly string[], s
   }
 }
 
-/** The `checks:` part of an older build's facts, its whole commands cut down to check keys. */
-export function rekeyFacts(facts: string): string {
-  return facts.split('; ').map(part => {
-    if (!part.startsWith('checks: ')) return part
-    const found = [...part.slice('checks: '.length).matchAll(/(?:^|, )(.+?) (passed|failed)(?=, |$)/g)]
-    return found.length ? 'checks: ' + found.map(m => `${rekeyCheck(m[1]!)} ${m[2]}`).join(', ') : 'checks: (dropped)'
-  }).join('; ')
+const COUNT = /^\d+ (prompts?|tool calls?|commits?|push(e?s)?|PRs? opened)$/
+
+/**
+ * An older build's facts with only the parts this build writes: counts, `checks:` cut down to check keys,
+ * `edited config:` file names and `a quiet turn`. Anything else (a quoted `; ` in a command split it) goes.
+ */
+function rekeyFacts(facts: string): string {
+  const kept = facts.split('; ').flatMap(part => {
+    if (part === 'a quiet turn' || COUNT.test(part)) return [part]
+    if (part.startsWith('checks: ')) {
+      const found = [...part.slice('checks: '.length).matchAll(/(?:^|, )(.+?) (passed|failed)(?=, |$)/g)]
+      return found.length ? ['checks: ' + found.map(m => `${rekeyCheck(m[1]!)} ${m[2]}`).join(', ')] : []
+    }
+    if (part.startsWith('edited config: ')) {
+      const names = part.slice('edited config: '.length).split(', ').map(fileName).filter(Boolean)
+      return names.length ? ['edited config: ' + names.join(', ')] : []
+    }
+    return []
+  })
+  return kept.length ? kept.join('; ') : 'a quiet turn'
 }
 
 /** A line as this build reads it: an older build's check commands cut down to keys, and at most LOG_LINE_MAX. */

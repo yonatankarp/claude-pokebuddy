@@ -16,7 +16,7 @@ export function turnFacts(signals: readonly Signal[], prompts: number): string {
   if (count('pr')) parts.push(count('pr') === 1 ? '1 PR opened' : `${count('pr')} PRs opened`)
   const checks = signals.filter((s): s is Extract<Signal, { kind: 'check' }> => s.kind === 'check')
   if (checks.length) parts.push('checks: ' + checks.map(c => `${c.key} ${c.ok ? 'passed' : 'failed'}`).join(', '))
-  const configs = [...new Set(signals.flatMap(s => (s.kind === 'config' ? [s.path.split('/').pop()!] : [])))]
+  const configs = [...new Set(signals.flatMap(s => (s.kind === 'config' ? [s.name] : [])))]
   if (configs.length) parts.push('edited config: ' + configs.join(', '))
   return parts.length ? parts.join('; ') : 'a quiet turn'
 }

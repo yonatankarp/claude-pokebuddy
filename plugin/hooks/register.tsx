@@ -240,9 +240,6 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   on('prompt.submit', async ($, e, next) => {
-    // Another session may have written the save since this one last did: draw what is stored.
-    const stored = parseSave(await $.store.get('save'))
-    if (stored.kind === 'ok') await update($, saveAtom, () => stored.save)
     if (countsAsPrompt(e)) {
       tally.prompts++
       // The turn's first prompt: one typed while the turn runs waits in the queue and is not this turn's.
@@ -250,7 +247,12 @@ export const register: Register = (on, options) => {
       const window = Math.floor((await $.clock.now()) / WINDOW_MS)
       if (window !== lastWindow) { tally.activeWindows++; lastWindow = window }
     }
-    return next(e)
+    const result = await next(e)
+    // Another session may have written the save since this one last did: draw what is stored. After
+    // next, so the prompt never waits on the read.
+    const stored = parseSave(await $.store.get('save'))
+    if (stored.kind === 'ok') await update($, saveAtom, () => stored.save)
+    return result
   }).catch(($, e, next) => next(e))
 
   on('tool.check', async ($, e, next) => {

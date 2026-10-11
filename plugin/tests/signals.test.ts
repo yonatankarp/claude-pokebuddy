@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { CHECK_KEY_MAX, checkKey, isConfigPath, rekeyCheck, signalsFromTool, splitCommand, type Signal } from '../hooks/signals'
+import { CHECK_KEY_MAX, checkKey, configSignal, isConfigPath, rekeyCheck, signalsFromTool, splitCommand, type Signal } from '../hooks/signals'
 
 const label = (s: Signal) => (s.kind === 'check' ? `check:${s.key}:${s.ok}` : s.kind)
 const bash = (command: string, isError = false) => signalsFromTool('Bash', { command }, isError ? 'failed' : 'ok').map(label)
@@ -70,19 +70,37 @@ describe('signalsFromTool', () => {
     expect(isConfigPath('/r/CLAUDE.local.md')).toBe(true)
     expect(isConfigPath('/r/hooks/register.tsx')).toBe(false)
   })
-  test('isConfigPath: worktrees, transcripts, memory, plans and node_modules are not config', () => {
-    expect(isConfigPath('/r/.claude/worktrees/a/src/x.ts')).toBe(false)
+  test('isConfigPath: under .claude only settings, CLAUDE.md, keybindings and the agents, commands, skills, hooks and output-styles folders', () => {
+    expect(isConfigPath('/r/.claude/settings.json')).toBe(true)
+    expect(isConfigPath('/r/.claude/settings.local.json')).toBe(true)
+    expect(isConfigPath('/Users/me/.claude/CLAUDE.md')).toBe(true)
+    expect(isConfigPath('/Users/me/.claude/keybindings.json')).toBe(true)
+    for (const dir of ['agents', 'commands', 'skills', 'hooks', 'output-styles']) expect(isConfigPath(`/r/.claude/${dir}/x/y.md`)).toBe(true)
+    expect(isConfigPath('.claude/commands/ship.md')).toBe(true)
+    expect(isConfigPath('C:\\r\\.claude\\settings.json')).toBe(true)
     expect(isConfigPath('/r/.claude/worktrees/a/.claude/settings.json')).toBe(true)
     expect(isConfigPath('/r/.claude/worktrees/a/CLAUDE.md')).toBe(true)
+  })
+  test('isConfigPath: the rest of .claude and node_modules are not config', () => {
+    expect(isConfigPath('/r/.claude/worktrees/a/src/x.ts')).toBe(false)
     expect(isConfigPath('/Users/me/.claude/plans/happy-fox.md')).toBe(false)
     expect(isConfigPath('/Users/me/.claude/projects/-r/memory/MEMORY.md')).toBe(false)
     expect(isConfigPath('/Users/me/.claude/projects/-r/abc.jsonl')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/plugins/cache/p/commands/x.md')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/todos/t.json')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/shell-snapshots/s.sh')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/history.jsonl')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/agents')).toBe(false)
     expect(isConfigPath('/r/node_modules/pkg/CLAUDE.md')).toBe(false)
     expect(isConfigPath('/r/node_modules/pkg/.claude/settings.json')).toBe(false)
-    expect(isConfigPath('/r/.claude/settings.local.json')).toBe(true)
-    expect(isConfigPath('.claude/commands/ship.md')).toBe(true)
-    expect(isConfigPath('C:\\r\\.claude\\settings.json')).toBe(true)
     expect(isConfigPath('/r/.claude')).toBe(false)
+  })
+  test('a config signal holds the file name, never the path', () => {
+    const [, sig] = signalsFromTool('Edit', { file_path: 'C:\\Users\\alice\\secretproj\\CLAUDE.md' }, 'ok')
+    expect(sig).toMatchObject({ kind: 'config', name: 'CLAUDE.md' })
+    expect(JSON.stringify(sig)).not.toMatch(/alice|secretproj|Users/)
+    expect(configSignal('/a/CLAUDE.md')).not.toEqual(configSignal('/b/CLAUDE.md'))
+    expect(configSignal('/a/CLAUDE.md')).toEqual(configSignal('/a/CLAUDE.md'))
   })
 })
 

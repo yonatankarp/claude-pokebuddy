@@ -63,7 +63,7 @@ function validSave(raw: Record<string, unknown>): boolean {
   if (raw.evolution !== null && !(isObj(raw.evolution) && evolvesInto.includes(raw.evolution.to as number))) return false
   if (raw.cancelledAtLevel !== null && !isInt(raw.cancelledAtLevel, 1, 100)) return false
   if (raw.lastResetDate !== undefined && !isDate(raw.lastResetDate)) return false
-  if (raw.finishedSessions !== undefined && !(Array.isArray(raw.finishedSessions) && raw.finishedSessions.length <= FINISHED_MAX && raw.finishedSessions.every(x => typeof x === 'string'))) return false
+  if (raw.finishedSessions !== undefined && !(Array.isArray(raw.finishedSessions) && raw.finishedSessions.every(x => typeof x === 'string'))) return false
   return true
 }
 
@@ -94,7 +94,7 @@ function normalise(save: Save): Save {
     checks: Object.fromEntries(checks.slice(-CHECKS_MAX)),
     pendingLog: save.pendingLog.map(normaliseLine),
     lastResetDate: save.lastResetDate ?? null,
-    finishedSessions: save.finishedSessions ?? [],
+    finishedSessions: (save.finishedSessions ?? []).slice(-FINISHED_MAX),
   }
 }
 

@@ -17,7 +17,7 @@
     "speechContext": {
       "type": "string",
       "title": "Speech context",
-      "description": "What the buddy's model sees each turn. conversation: the first 300 characters of your prompt and of Claude's answer, plus the facts. facts: only the buddy's name, species, level and nature, counts of prompts, tool calls, commits, pushes and PRs, check names such as npm test with passed or failed, and the file names of config files edited. The session judge sees the facts only.",
+      "description": "What the buddy's model sees each turn. conversation: the first 300 characters of your prompt and of Claude's answer, plus the facts. facts: only the buddy's name, species, level, nature and whether it is shiny, counts of prompts, tool calls, commits, pushes and PRs, check names such as npm test with passed or failed, and the file names of config files edited. The session judge sees the facts only.",
       "options": [
         "conversation",
         "facts"

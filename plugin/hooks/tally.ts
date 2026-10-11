@@ -24,7 +24,7 @@ export function scoreTally(t: Tally, checks: Checks) {
   let tools = 0, greens = 0, commits = 0, pushes = 0
   for (const s of t.signals) {
     if (s.kind === 'tool') tools++
-    else if (s.kind === 'config') configFiles.add(s.path)
+    else if (s.kind === 'config') configFiles.add(s.file)
     else if (s.kind === 'commit') commits++
     else if (s.kind === 'push' || s.kind === 'pr') pushes++
     else if (s.kind === 'check') {

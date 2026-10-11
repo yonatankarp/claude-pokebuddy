@@ -31,13 +31,14 @@ describe('save', () => {
     expect(parseSave({ ...s, lastResetDate: 'yesterday' }).kind).toBe('corrupt')
     expect(freshSave([1, 2, 3, 4], '2026-10-11').lastResetDate).toBe('2026-10-11')
   })
-  test('finishedSessions: missing reads as [], a list of up to 50 ids is kept, anything else is corrupt', () => {
+  test('finishedSessions: missing reads as [], a longer list keeps the newest 50, anything else is corrupt', () => {
     const s = freshSave([1, 2, 3, 4])
     const { finishedSessions: _, ...old } = s
     expect(parseSave(old)).toEqual({ kind: 'ok', save: { ...old, finishedSessions: [] } })
     expect(parseSave({ ...s, finishedSessions: ['a', 'b'] }).kind).toBe('ok')
     expect(parseSave({ ...s, finishedSessions: [1] }).kind).toBe('corrupt')
-    expect(parseSave({ ...s, finishedSessions: Array(51).fill('a') }).kind).toBe('corrupt')
+    const many = parseSave({ ...s, finishedSessions: Array.from({ length: 60 }, (_, i) => `s${i}`) })
+    expect(many.kind === 'ok' && many.save.finishedSessions).toEqual(Array.from({ length: 50 }, (_, i) => `s${i + 10}`))
   })
   test('export and import round-trip; tampering is refused', () => {
     const s = { ...freshSave([5, 6, 7, 8]), nickname: 'Sparky ⚡' }
@@ -149,8 +150,21 @@ describe('save', () => {
     expect(r.kind === 'ok' && r.save.checks).toEqual({ 'npm test': true, pytest: true })
     expect(r.kind === 'ok' && Object.keys(r.save.checks)).toEqual(['npm test', 'pytest'])
   })
+  test('an older save\'s log lines keep only the parts this build writes', () => {
+    const raw = { ...freshSave([1, 2, 3, 4]), pendingLog: [
+      'S\t2 prompts; 3 tool calls; 1 commit; 2 pushs; 1 PR opened; checks: npm test "a; secret stuff" passed; edited config: C:\\Users\\alice\\CLAUDE.md',
+      'a quiet turn',
+      'T\tsecret stuff; 1 prompt',
+    ] }
+    const r = parseSave(raw)
+    expect(r.kind === 'ok' && r.save.pendingLog).toEqual([
+      'S\t2 prompts; 3 tool calls; 1 commit; 2 pushs; 1 PR opened; edited config: CLAUDE.md',
+      'a quiet turn',
+      'T\t1 prompt',
+    ])
+  })
   test('an older save\'s log lines load with check commands cut down and each line capped', () => {
-    const long = 'x'.repeat(LOG_LINE_MAX + 50)
+    const long = `S\tedited config: ${'x'.repeat(LOG_LINE_MAX)}.md`
     const raw = { ...freshSave([1, 2, 3, 4]), pendingLog: ['S\t1 prompt; checks: make test TOKEN=abc failed, pytest -k s passed; edited config: CLAUDE.md', long] }
     const r = parseSave(raw)
     expect(r.kind === 'ok' && r.save.pendingLog).toEqual(['S\t1 prompt; checks: make test failed, pytest passed; edited config: CLAUDE.md', long.slice(0, LOG_LINE_MAX)])

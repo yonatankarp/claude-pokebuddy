@@ -10,6 +10,8 @@ const usage = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 
 let toasts: string[] = []
 let modelCalls: string[] = []
 let modelReply = '42'
+/** Runs while the model answers, before the reply comes back. */
+let whileModelAnswers: (() => Promise<unknown>) | null = null
 
 const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
 
@@ -29,6 +31,7 @@ function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
   on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
   on('model.complete', async (_$, e) => {
     modelCalls.push(e.prompt)
+    await whileModelAnswers?.()
     return { value: { isAnswered: true as const, text: modelReply, usage } }
   })
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
@@ -557,7 +560,7 @@ describe('register', () => {
   })
 
   test('session start judges other sessions\' lines once and keeps its own', async ($, on) => {
-    const s = { ...freshSave([1, 2, 3, 4]), pendingLog: ['OLD\t1 commit', 'plain line', 'S1\t1 prompt'] }
+    const s = { ...freshSave([1, 2, 3, 4]), pendingLog: ['OLD\t1 commit', '1 push', 'S1\t1 prompt'] }
     const store = world(on, { save: s })
     const clock = mock.clock(on, { now: NOON })
     await start($)
@@ -567,7 +570,7 @@ describe('register', () => {
     expect(after.expBySource.judge).toBe(42)
     expect(modelCalls).toHaveLength(1)
     expect(modelCalls[0]).toContain('- 1 commit')
-    expect(modelCalls[0]).toContain('- plain line')
+    expect(modelCalls[0]).toContain('- 1 push')
     expect(modelCalls[0]).not.toContain('1 prompt')
     await start($)
     await clock.advance(1)
@@ -729,6 +732,27 @@ describe('register', () => {
       await ui.unmount()
     } finally {
       modelReply = '42'
+    }
+  })
+
+  test('a /buddy quiet that lands while the model is answering drops the line', async ($, on) => {
+    world(on, { save: pika() })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    try {
+      await start($)
+      modelReply = 'Pika, mid-air'
+      whileModelAnswers = () => $.command.run(run('quiet'))
+      await prompt($)
+      await endTurn($)
+      await clock.advance(1)
+      expect(modelCalls).toHaveLength(1)
+      const ui = await band($)
+      expect(await ui.find({ type: 'Text', text: /mid-air/ })).toBeUndefined()
+      await ui.unmount()
+    } finally {
+      modelReply = '42'
+      whileModelAnswers = null
     }
   })
 

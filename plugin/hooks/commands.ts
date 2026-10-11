@@ -31,7 +31,7 @@ const SOURCE_NAMES: Record<Source, string> = {
 }
 
 /** The feed streak as of `today`: a run whose last feed was before yesterday is already broken. */
-export function feedStreak(save: Save, today: string): number {
+function feedStreak(save: Save, today: string): number {
   const last = save.feed.lastDate
   return last !== null && last >= previousDate(today) ? save.counters.feedRun : 0
 }
@@ -115,100 +115,100 @@ export type CommandIO = {
 /** `/buddy <args>`: the reply to show. */
 export async function runCommand(io: CommandIO, args: string): Promise<string> {
   const { sub, rest } = parseArgs(args)
-    if (sub === 'help') return helpText(COMMAND)
-    if (sub === 'dex' && rest) {
-      const s = findSpecies(rest)
-      return s ? dexText(s, false) : `No Gen 1 Pokémon called "${rest}".`
+  if (sub === 'help') return helpText(COMMAND)
+  if (sub === 'dex' && rest) {
+    const s = findSpecies(rest)
+    return s ? dexText(s, false) : `No Gen 1 Pokémon called "${rest}".`
+  }
+  const local = localTime(await io.now())
+  switch (sub) {
+    case 'stats': {
+      const s = await io.load()
+      if (s) await io.show(s)
+      return s ? statsText(s, local.date) : io.blockedText()
     }
-    const local = localTime(await io.now())
-    switch (sub) {
-      case 'stats': {
-        const s = await io.load()
-        if (s) await io.show(s)
-        return s ? statsText(s, local.date) : io.blockedText()
-      }
-      case 'dex': {
-        const s = await io.load()
-        return s ? dexText(species(s.species), true) : io.blockedText()
-      }
-      case 'feed': {
-        if (!io.isInteractive) return 'Feeding needs you at the terminal: a run with no one watching (-p, the SDK) earns nothing.'
-        const r = await io.mutate(s => feed(s, local))
-        if (!r) return io.blockedText()
-        const name = species(r.save.species).name
-        if (!r.fed) return `${name} has already eaten today. Come back tomorrow.`
-        const days = r.save.counters.feedRun
-        const streak = `Streak: ${days} day${days === 1 ? '' : 's'}.`
-        if (r.gained === 0) return `You fed ${name} a Rare Candy. It is already at Lv 100, so it gains no EXP. ${streak}`
-        return `You fed ${name} a Rare Candy. +${r.gained} EXP. ${streak}`
-      }
-      case 'use': {
-        const stone = parseStone(rest)
-        if (!stone) return 'Which stone? moon, fire, water, thunder or leaf.'
-        let from = 0
-        const r = await io.mutate(s => { from = s.species; return useStone(s, stone) })
-        if (!r) return io.blockedText()
-        if (r.error) return r.error
-        return `${species(from).name} evolved into ${species(r.save.species).name}!`
-      }
-      case 'stop': {
-        const r = await io.mutate(s => cancelEvolution(s))
-        if (!r) return io.blockedText()
-        if (r.cancelled) io.evolutionStopped()
-        return r.cancelled ? `Huh? ${species(r.save.species).name} stopped evolving!` : 'Nothing is evolving right now.'
-      }
-      case 'toggle': {
-        const r = await io.mutate(s => ({ save: { ...s, view: s.view === 'full' ? 'compact' as const : 'full' as const } }))
-        return r ? `Showing the ${r.save.view} view.` : io.blockedText()
-      }
-      case 'quiet': {
-        const r = await io.mutate(s => ({ save: { ...s, speechOn: !s.speechOn } }))
-        if (!r) return io.blockedText()
-        if (!r.save.speechOn) await io.quietBubble()
-        return r.save.speechOn ? 'Speech is on.' : 'Speech is off. No model calls are made: no reactions and no session judge.'
-      }
-      case 'nickname': {
-        const nickname = [...rest.trim()].slice(0, NICKNAME_MAX).join('') || null
-        const r = await io.mutate(s => ({ save: { ...s, nickname } }))
-        if (!r) return io.blockedText()
-        return nickname ? `Nickname set to ${nickname}.` : 'Nickname cleared.'
-      }
-      case 'export': {
-        const s = await io.load()
-        if (!s) return io.blockedText()
-        const blob = exportBlob(s)
-        return (await io.copy(blob)) ? 'Save copied to the clipboard.' : `Copy this save:\n${blob}`
-      }
-      case 'import': {
-        const parsed = importBlob(rest)
-        if (parsed.kind === 'bad') return parsed.reason
-        const kept = await io.backUp(await io.readRaw('save'))
-        await io.install(parsed.save)
-        return `Restored ${species(parsed.save.species).name} at Lv ${parsed.save.level}.${kept ? ' Your previous save is in the backup slot.' : ''}`
-      }
-      case 'restore': {
-        const bak = parseSave(await io.readRaw('save.bak'))
-        if (bak.kind !== 'ok') return 'The backup slot does not hold a save this version can read. Nothing was changed.'
-        const current = await io.readRaw('save')
-        if (current !== undefined) await io.writeRaw('save.bak', current)
-        await io.install(bak.save)
-        return `Restored ${species(bak.save.species).name} at Lv ${bak.save.level} from the backup slot. The save it replaced is now in the backup slot.`
-      }
-      case 'reset': {
-        // Read only: an unconfirmed reset writes nothing, not even the fresh roll or the backup loadFresh makes.
-        const raw = await io.readRaw('save')
-        const cur = parseSave(raw)
-        if (rest.trim().toLowerCase() !== 'confirm') {
-          const what = cur.kind === 'ok' ? `${cur.save.nickname ?? species(cur.save.species).name} (Lv ${cur.save.level})` : 'the current save'
-          return `This rolls a new Pokémon at Lv 5 and moves ${what} to the backup slot. It works once a day. Run /buddy reset confirm to go ahead.`
-        }
-        if (cur.kind === 'ok' && cur.save.lastResetDate !== null && cur.save.lastResetDate >= local.date) {
-          return 'You already reset today. Reset works once a day; nothing was changed.'
-        }
-        const kept = await io.backUp(raw)
-        const save = freshSave(io.randomSeed(), local.date)
-        await io.install(save)
-        return `A wild ${species(save.species).name} appeared at Lv ${save.level}! ${kept ? 'Your previous save is in the backup slot.' : 'The backup slot keeps the backup it already had.'}`
-      }
+    case 'dex': {
+      const s = await io.load()
+      return s ? dexText(species(s.species), true) : io.blockedText()
     }
+    case 'feed': {
+      if (!io.isInteractive) return 'Feeding needs you at the terminal: a run with no one watching (-p, the SDK) earns nothing.'
+      const r = await io.mutate(s => feed(s, local))
+      if (!r) return io.blockedText()
+      const name = species(r.save.species).name
+      if (!r.fed) return `${name} has already eaten today. Come back tomorrow.`
+      const days = r.save.counters.feedRun
+      const streak = `Streak: ${days} day${days === 1 ? '' : 's'}.`
+      if (r.gained === 0) return `You fed ${name} a Rare Candy. It is already at Lv 100, so it gains no EXP. ${streak}`
+      return `You fed ${name} a Rare Candy. +${r.gained} EXP. ${streak}`
+    }
+    case 'use': {
+      const stone = parseStone(rest)
+      if (!stone) return 'Which stone? moon, fire, water, thunder or leaf.'
+      let from = 0
+      const r = await io.mutate(s => { from = s.species; return useStone(s, stone) })
+      if (!r) return io.blockedText()
+      if (r.error) return r.error
+      return `${species(from).name} evolved into ${species(r.save.species).name}!`
+    }
+    case 'stop': {
+      const r = await io.mutate(s => cancelEvolution(s))
+      if (!r) return io.blockedText()
+      if (r.cancelled) io.evolutionStopped()
+      return r.cancelled ? `Huh? ${species(r.save.species).name} stopped evolving!` : 'Nothing is evolving right now.'
+    }
+    case 'toggle': {
+      const r = await io.mutate(s => ({ save: { ...s, view: s.view === 'full' ? 'compact' as const : 'full' as const } }))
+      return r ? `Showing the ${r.save.view} view.` : io.blockedText()
+    }
+    case 'quiet': {
+      const r = await io.mutate(s => ({ save: { ...s, speechOn: !s.speechOn } }))
+      if (!r) return io.blockedText()
+      if (!r.save.speechOn) await io.quietBubble()
+      return r.save.speechOn ? 'Speech is on.' : 'Speech is off. No model calls are made: no reactions and no session judge.'
+    }
+    case 'nickname': {
+      const nickname = [...rest.trim()].slice(0, NICKNAME_MAX).join('') || null
+      const r = await io.mutate(s => ({ save: { ...s, nickname } }))
+      if (!r) return io.blockedText()
+      return nickname ? `Nickname set to ${nickname}.` : 'Nickname cleared.'
+    }
+    case 'export': {
+      const s = await io.load()
+      if (!s) return io.blockedText()
+      const blob = exportBlob(s)
+      return (await io.copy(blob)) ? 'Save copied to the clipboard.' : `Copy this save:\n${blob}`
+    }
+    case 'import': {
+      const parsed = importBlob(rest)
+      if (parsed.kind === 'bad') return parsed.reason
+      const kept = await io.backUp(await io.readRaw('save'))
+      await io.install(parsed.save)
+      return `Restored ${species(parsed.save.species).name} at Lv ${parsed.save.level}.${kept ? ' Your previous save is in the backup slot.' : ''}`
+    }
+    case 'restore': {
+      const bak = parseSave(await io.readRaw('save.bak'))
+      if (bak.kind !== 'ok') return 'The backup slot does not hold a save this version can read. Nothing was changed.'
+      const current = await io.readRaw('save')
+      if (current !== undefined) await io.writeRaw('save.bak', current)
+      await io.install(bak.save)
+      return `Restored ${species(bak.save.species).name} at Lv ${bak.save.level} from the backup slot. The save it replaced is now in the backup slot.`
+    }
+    case 'reset': {
+      // Read only: an unconfirmed reset writes nothing, not even the fresh roll or the backup loadFresh makes.
+      const raw = await io.readRaw('save')
+      const cur = parseSave(raw)
+      if (rest.trim().toLowerCase() !== 'confirm') {
+        const what = cur.kind === 'ok' ? `${cur.save.nickname ?? species(cur.save.species).name} (Lv ${cur.save.level})` : 'the current save'
+        return `This rolls a new Pokémon at Lv 5 and moves ${what} to the backup slot. It works once a day. Run /buddy reset confirm to go ahead.`
+      }
+      if (cur.kind === 'ok' && cur.save.lastResetDate !== null && cur.save.lastResetDate >= local.date) {
+        return 'You already reset today. Reset works once a day; nothing was changed.'
+      }
+      const kept = await io.backUp(raw)
+      const save = freshSave(io.randomSeed(), local.date)
+      await io.install(save)
+      return `A wild ${species(save.species).name} appeared at Lv ${save.level}! ${kept ? 'Your previous save is in the backup slot.' : 'The backup slot keeps the backup it already had.'}`
+    }
+  }
 }

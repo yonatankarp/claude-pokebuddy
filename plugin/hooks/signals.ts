@@ -1,6 +1,9 @@
+import { fnv1a } from './codec'
+
+/** A config edit holds the file's name and a hash of its path (to count each file once), never the path. */
 export type Signal =
   | { kind: 'tool' }
-  | { kind: 'config'; path: string }
+  | { kind: 'config'; name: string; file: string }
   | { kind: 'commit' }
   | { kind: 'push' }
   | { kind: 'pr' }
@@ -121,21 +124,35 @@ const normalise = (seg: string[]) => {
 }
 
 const CONFIG_NAMES = new Set(['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md'])
-// Under a `.claude/` directory but not config: worktree checkouts, session transcripts and memory, plans.
-const NOT_CONFIG_UNDER_CLAUDE = new Set(['worktrees', 'projects', 'plans'])
+// Folders of a `.claude/` directory whose files are config; the rest (plans, projects, worktrees, plugins,
+// todos, shell snapshots and the like) is the engine's own state.
+const CONFIG_DIRS = new Set(['agents', 'commands', 'skills', 'hooks', 'output-styles'])
+const CONFIG_FILES_IN_CLAUDE = /^(settings.*\.json|CLAUDE\.md|keybindings\.json)$/
+
+/** A path's segments, `/` or `\` separated. */
+const segments = (path: string) => path.split(/[\\/]/)
+
+/** A path's file name, whichever separator it uses. */
+export const fileName = (path: string) => segments(path).pop() ?? ''
 
 /**
- * CLAUDE.md, CLAUDE.local.md and AGENTS.md at any depth, and any file under a `.claude/` directory except
- * its worktrees, projects and plans; nothing under node_modules. The innermost `.claude` decides, so a
- * worktree's own `.claude/settings.json` counts while its source files do not.
+ * CLAUDE.md, CLAUDE.local.md and AGENTS.md at any depth; in a `.claude/` directory, its settings*.json,
+ * CLAUDE.md and keybindings.json and the files under its agents, commands, skills, hooks and output-styles
+ * folders. Nothing under node_modules. The innermost `.claude` decides, so a worktree's own
+ * `.claude/settings.json` counts while its source files do not.
  */
 export function isConfigPath(path: string): boolean {
-  const parts = path.replace(/\\/g, '/').split('/')
+  const parts = segments(path)
   if (parts.includes('node_modules')) return false
-  if (CONFIG_NAMES.has(parts[parts.length - 1] ?? '')) return true
+  const name = parts[parts.length - 1] ?? ''
+  if (CONFIG_NAMES.has(name)) return true
   const at = parts.lastIndexOf('.claude')
-  return at !== -1 && at < parts.length - 1 && !NOT_CONFIG_UNDER_CLAUDE.has(parts[at + 1]!)
+  if (at === -1) return false
+  if (at === parts.length - 2) return CONFIG_FILES_IN_CLAUDE.test(name)
+  return at < parts.length - 2 && CONFIG_DIRS.has(parts[at + 1]!)
 }
+
+export const configSignal = (path: string): Signal => ({ kind: 'config', name: fileName(path), file: fnv1a(path) })
 
 function gitArgs(seg: string[]): { sub: string | undefined; args: string[] } {
   let i = 1
@@ -219,7 +236,7 @@ export function signalsFromTool(tool: string, input: Record<string, unknown>, ou
     out.push(...bashSignals(input.command, outcome === 'ok', resultText))
   }
   if (outcome === 'ok' && (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit') && typeof input.file_path === 'string' && isConfigPath(input.file_path)) {
-    out.push({ kind: 'config', path: input.file_path })
+    out.push(configSignal(input.file_path))
   }
   return out
 }
