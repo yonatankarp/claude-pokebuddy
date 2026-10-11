@@ -6,6 +6,10 @@
   "homepage": "https://github.com/yonatankarp/pokebuddy",
   "repository": "https://github.com/yonatankarp/pokebuddy",
   "license": "MIT",
+  "keywords": ["pokemon", "buddy", "pet", "tamagotchi", "gamification", "fun"],
+  "supportUrl": "https://github.com/yonatankarp/pokebuddy/issues",
+  "documentationUrl": "https://github.com/yonatankarp/pokebuddy#readme",
+  "privacyPolicyUrl": "https://github.com/yonatankarp/pokebuddy#settings-and-privacy",
   "types": "./types/index.d.ts",
   "userConfig": {
     "speechModel": {
