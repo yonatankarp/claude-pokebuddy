@@ -28,7 +28,7 @@ The command is `/buddy`. In some contexts Claude Code shows it namespaced as `/p
 | `/buddy use <stone>` | Evolve with a stone |
 | `/buddy stop` | Cancel an evolution in progress |
 | `/buddy toggle` | Full view or compact line |
-| `/buddy quiet` | Speech on or off |
+| `/buddy quiet` | Speech and the session judge on or off |
 | `/buddy nickname <name>` | Set a nickname (empty to clear) |
 | `/buddy export` | Copy your save to the clipboard |
 | `/buddy import <blob>` | Restore a save |

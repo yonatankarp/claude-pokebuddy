@@ -66,7 +66,7 @@ export function helpText(command: string): string {
     `/${command} use <stone>: evolve with a stone`,
     `/${command} stop: cancel an evolution in progress`,
     `/${command} toggle: compact or full sprite`,
-    `/${command} quiet: speech on or off`,
+    `/${command} quiet: speech and the session judge on or off`,
     `/${command} nickname <name>: set a nickname (empty to clear)`,
     `/${command} export: copy your save to the clipboard`,
     `/${command} import <blob>: restore a save`,

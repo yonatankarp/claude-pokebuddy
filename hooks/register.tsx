@@ -250,7 +250,7 @@ export const register: Register = (on, options) => {
         const r = await mutate($, s => ({ save: { ...s, speechOn: !s.speechOn } }))
         if (!r) return blockedText()
         if (!r.save.speechOn) await update($, bubbleAtom, () => null)
-        return { text: r.save.speechOn ? 'Speech is on.' : 'Speech is off. No model calls will be made for reactions.' }
+        return { text: r.save.speechOn ? 'Speech is on.' : 'Speech is off. No model calls are made: no reactions and no session judge.' }
       }
       case 'nickname': {
         const nickname = rest.trim().slice(0, 12) || null

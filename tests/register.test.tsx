@@ -132,6 +132,17 @@ describe('register', () => {
     expect(store.get('save')).toBe('garbage')
   })
 
+  test('reset over a corrupt save keeps a readable backup', async ($, on) => {
+    const good = freshSave([9, 9, 9, 9])
+    const store = world(on, { save: 'garbage', 'save.bak': good })
+    mock.clock(on)
+    await start($)
+    const r = await $.command.run(run('reset'))
+    expect(store.get('save.bak')).toEqual(good)
+    expect((store.get('save') as { version: number }).version).toBe(1)
+    expect(r.text).toMatch(/save\.bak keeps the backup/)
+  })
+
   test('reset rolls a fresh save and backs up the current one', async ($, on) => {
     const s = freshSave([1, 2, 3, 4])
     const store = world(on, { save: s })
