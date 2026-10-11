@@ -1,10 +1,10 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { band, type BandElements, type BandView } from '../hooks/render/band.tsx'
-import { species } from '../hooks/data/dex.ts'
-import { expForLevel } from '../hooks/exp.ts'
-import { freshSave, parseSave, type Save } from '../hooks/state.ts'
+import { band, type BandElements, type BandView } from '../plugin/hooks/render/band.tsx'
+import { species } from '../plugin/hooks/data/dex.ts'
+import { expForLevel } from '../plugin/hooks/exp.ts'
+import { freshSave, parseSave, type Save } from '../plugin/hooks/state.ts'
 
 type Node = { type: 'Box' | 'Text'; props: Record<string, unknown>; children: (Node | string)[] }
 type Cell = { ch: string; fg?: string; bg?: string; bold?: boolean; dim?: boolean }

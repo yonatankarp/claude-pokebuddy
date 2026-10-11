@@ -1,5 +1,15 @@
 {
   "name": "pokebuddy",
-  "owner": { "name": "Yonatan Karp-Rudin" },
-  "plugins": [{ "name": "pokebuddy", "source": "./" }]
+  "owner": { "name": "Yonatan Karp-Rudin", "url": "https://github.com/yonatankarp" },
+  "metadata": {
+    "description": "Marketplace for pokebuddy, a Gen 1 Pokémon buddy for Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "pokebuddy",
+      "source": "./plugin",
+      "description": "A Gen 1 Pokémon buddy above your prompt that levels up and evolves from real work.",
+      "version": "1.0.0"
+    }
+  ]
 }

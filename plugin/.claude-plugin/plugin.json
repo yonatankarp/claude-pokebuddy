@@ -2,6 +2,10 @@
   "name": "pokebuddy",
   "version": "1.0.0",
   "description": "A Gen 1 Pokémon buddy above your prompt that levels up and evolves from real work.",
+  "author": { "name": "Yonatan Karp-Rudin", "url": "https://github.com/yonatankarp" },
+  "homepage": "https://github.com/yonatankarp/pokebuddy",
+  "repository": "https://github.com/yonatankarp/pokebuddy",
+  "license": "MIT",
   "types": "./types/index.d.ts",
   "userConfig": {
     "speechModel": {

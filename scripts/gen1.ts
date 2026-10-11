@@ -1,4 +1,4 @@
-import type { Evolution, Stone } from '../hooks/data/types.ts'
+import type { Evolution, Stone } from '../plugin/hooks/data/types.ts'
 
 type Detail = { trigger: { name: string }; min_level?: number | null; item?: { name: string } | null }
 export type ChainLink = { species: { url: string }; evolution_details: Detail[]; evolves_to: ChainLink[] }
