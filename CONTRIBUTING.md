@@ -1,10 +1,10 @@
 # Contributing
 
-The repository is called claude-pokebuddy because the `claude-` prefix is reserved for plugin names; the plugin itself is `pokebuddy`, and its command is `/buddy`.
+The plugin is `pokebuddy` and its command is `/buddy`.
 
 ## Layout
 
-`hooks/` holds the mod: `register.tsx` wires the hooks, the game rules, save handling and speech sit in their own modules beside it, and `hooks/render/` draws the band. `hooks/data/pokedex.generated.ts` is the baked Pokédex. `types/index.d.ts` is the contract the mod ships, including the `Save` type. `tests/` runs in Claude Code's plugin test kit, and `scripts/` holds the data pipeline with its own Node tests.
+`hooks/` holds the mod: `register.tsx` wires the hooks, the game rules, save handling and speech sit in their own modules beside it, and `hooks/render/` draws the band. `hooks/data/pokedex.generated.ts` is the baked Pokédex. `types/index.d.ts` is the contract the mod ships, including the `Save` type. `tests/` runs in Claude Code's plugin test kit, and `scripts/` holds the data pipeline and the screenshot renderer with their own Node tests.
 
 ## Running the checks
 
@@ -18,6 +18,10 @@ claude plugin test .
 ```
 
 To try your changes in a session, start Claude Code with `--plugin-dir .` from the repository.
+
+## Screenshots
+
+The images in `docs/images/` are drawn by the band's own code: `npm run screenshots` lays out the band for a few fixed saves the way the terminal would and writes them as SVG. Run it after changing `hooks/render/` and commit the result.
 
 ## Building the data
 

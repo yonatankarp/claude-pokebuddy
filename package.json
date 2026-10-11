@@ -1,5 +1,5 @@
 {
-  "name": "claude-pokebuddy-build",
+  "name": "pokebuddy-build",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,7 +7,8 @@
     "bake": "tsx scripts/bake.ts",
     "data": "npm run fetch && npm run bake",
     "test:scripts": "node --import tsx --test scripts/*.spec.ts",
-    "check:data": "npm run bake && git diff --exit-code hooks/data/pokedex.generated.ts"
+    "check:data": "npm run bake && git diff --exit-code hooks/data/pokedex.generated.ts",
+    "screenshots": "tsx scripts/screenshots.ts"
   },
   "devDependencies": {
     "@types/node": "22.10.2",
