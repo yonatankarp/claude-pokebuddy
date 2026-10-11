@@ -92,7 +92,7 @@ function boxTab({ Box, Text, Button }: PanelElements, { save, releasing }: Panel
   return [
     <Text key="active">{`Buddy: ${name(save)}${save.isShiny ? ' ★' : ''}  Lv ${save.level}`}</Text>,
     ...(save.box.length === 0
-      ? [<Text key="empty" dimColor>The box is empty. Wild Pokémon turn up as you work: every 5 fixed checks, every 10 commits, a session judged 80+ or a 7-day feed streak.</Text>]
+      ? [<Text key="empty" dimColor>The box is empty. Wild Pokémon turn up at random as you work: fixing checks, committing, a session judged 80+ or a 7-day feed streak.</Text>]
       : save.box.map((m, i) => (
         <Box key={`m-${i}`} flexDirection="row" marginTop={i === 0 ? 1 : 0}>
           <Box key="label" width={28}><Text>{`${i + 1}. ${name(m)}${m.isShiny ? ' ★' : ''}  Lv ${m.level}`}</Text></Box>

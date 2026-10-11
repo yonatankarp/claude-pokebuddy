@@ -90,7 +90,7 @@ A stone evolution only happens when you use the stone, so Eevee becomes whicheve
 
 ## Catching more
 
-Wild Pokémon turn up while you work and are caught at once: one for every 5 fixed checks, every 10 commits, each session judged 80 or more, and every 7th day of a feed streak (with a better shiny chance). At most 3 a day. They join your box at level 1, and `/buddy switch` or the panel's Box tab makes any of them your buddy. Only your buddy earns EXP, so you choose who to train; skills, stones and the feed streak are yours and carry over. The Pokédex tab shows how many of the 151 you have caught.
+Wild Pokémon turn up at random while you work and are caught at once. Each fixed check has a 1 in 5 chance of bringing one, each commit 1 in 10, any turn where Claude uses tools 3 in 100, and a session judged 80 or more an even chance. Every 7th day of a feed streak always brings one, with a better shiny chance. At most 3 a day. They join your box at level 1, and `/buddy switch` or the panel's Box tab makes any of them your buddy. Only your buddy earns EXP, so you choose who to train; skills, stones and the feed streak are yours and carry over. The Pokédex tab shows how many of the 151 you have caught.
 
 ## Settings and privacy
 

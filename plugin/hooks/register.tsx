@@ -4,7 +4,7 @@ import { parseArgs, runCommand, statsText, type CommandIO } from './commands'
 import { EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
 import { species } from './data/dex'
 import { stoneName } from './data/types'
-import { catchWild, encountersEarned, JUDGE_ENCOUNTER } from './collection'
+import { catchWild, ENCOUNTER_CHANCE, encountersRolled, JUDGE_ENCOUNTER } from './collection'
 import { applyExp, applyTurn, finishEvolution, type GameEvent } from './game'
 import { judge } from './judge'
 import { FINISHED_MAX, lineSession, tagLine, takeEnded } from './log'
@@ -164,7 +164,7 @@ async function judgeEnded($: EngineInterface, model: string, loaded: Save | null
       const date = localTime(await $.clock.now()).date
       await mutate($, s => {
         const judged = applyExp(s, { judge: score })
-        if (score < JUDGE_ENCOUNTER) return judged
+        if (score < JUDGE_ENCOUNTER || Math.random() >= ENCOUNTER_CHANCE.judge) return judged
         const met = catchWild(judged.save, 1, randomSeed, date)
         return { save: met.save, events: [...judged.events, ...met.events] }
       })
@@ -265,7 +265,12 @@ export const register: Register = (on, options) => {
     const facts = turnFacts(turn.signals, turn.prompts)
     const r = await mutate($, s => {
       const turned = applyTurn(s, scoreTally(turn, s.checks), local)
-      const met = catchWild(turned.save, encountersEarned(s.counters, turned.save.counters), randomSeed, local.date)
+      const work = {
+        greens: turned.save.counters.greens - s.counters.greens,
+        commits: turned.save.counters.commits - s.counters.commits,
+        usedTools: turn.signals.length > 0,
+      }
+      const met = catchWild(turned.save, encountersRolled(work, Math.random), randomSeed, local.date)
       const applied = { save: met.save, events: [...turned.events, ...met.events] }
       // A session resumed under an id that had ended is running again: its lines wait for its next end.
       const finishedSessions = applied.save.finishedSessions.filter(id => id !== sid)

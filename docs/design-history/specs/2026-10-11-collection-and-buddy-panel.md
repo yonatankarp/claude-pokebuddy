@@ -92,5 +92,6 @@ Battles, trading between people, party limits, Poké Balls and catch chances, mo
 - **Box tab is a list,** with Make buddy and Release buttons per row (Release asks first), not a grid of icons.
 - **Pokédex tab is a grid of numbers,** caught ones bright, plus the caught names; entries stay on `/buddy dex <name>`.
 - **No switch while evolving:** the evolution finishes or is stopped first, so it never moves to the wrong Pokémon.
+- **Encounters are rolls, not a schedule** (changed after review: a fixed schedule was too predictable). A 1 in 5 chance per fixed check, 1 in 10 per commit, 3 in 100 per turn of tool work, an even chance for a session judged 80+; the 7th feed-streak day always brings one. Same averages as the table, still at most 3 a day.
 - Open questions went with their defaults: no re-roll, the encounter table as drafted, a band flash on a catch, and bare `/buddy` opens the panel.
 

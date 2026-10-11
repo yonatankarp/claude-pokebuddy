@@ -94,7 +94,7 @@ export function boxText(save: Save): string {
   const line = (m: { species: number; nickname: string | null; isShiny: boolean; level: number }) => `${monName(m)}${m.isShiny ? ' ★' : ''}  Lv ${m.level}`
   return [
     `Buddy: ${line(save)}`,
-    save.box.length ? 'Box:' : `Box: empty. Wild Pokémon turn up as you work: every 5 fixed checks, 10 commits or a session judged ${JUDGE_ENCOUNTER}+.`,
+    save.box.length ? 'Box:' : `Box: empty. Wild Pokémon turn up at random as you work: fixing checks, committing, a session judged ${JUDGE_ENCOUNTER}+ or a 7-day feed streak.`,
     ...save.box.map((m, i) => `  ${i + 1}. ${line(m)}`),
     `Caught ${save.caught.length} / 151.`,
   ].join('\n')

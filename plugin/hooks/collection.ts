@@ -1,5 +1,4 @@
 import { species } from './data/dex'
-import type { Counters } from './evolution'
 import { expForLevel } from './exp'
 import type { GameEvent } from './game'
 import { rollFrom } from './roll'
@@ -7,14 +6,21 @@ import { START_LEVEL, type Mon, type Save } from './state'
 
 /** Wild Pokémon a day, so a long session does not flood the box. */
 export const ENCOUNTERS_PER_DAY = 3
-/** A wild Pokémon for every this many of each counter, as stones are earned. */
-const EVERY: [keyof Counters, number][] = [['greens', 5], ['commits', 10]]
-/** A session the judge scores this high or more brings a wild Pokémon. */
+/**
+ * The chance of a wild Pokémon for each fixed check, each commit, a turn of tool work and a session the
+ * judge scores JUDGE_ENCOUNTER or more: random, so a catch surprises, about 1 in 5 checks and 1 in 10 commits.
+ */
+export const ENCOUNTER_CHANCE = { green: 0.2, commit: 0.1, turn: 0.03, judge: 0.5 } as const
 export const JUDGE_ENCOUNTER = 80
 
-/** Wild Pokémon the counters' growth from `before` to `after` brings. */
-export function encountersEarned(before: Counters, after: Counters): number {
-  return EVERY.reduce((n, [key, every]) => n + Math.floor(after[key] / every) - Math.floor(before[key] / every), 0)
+/** Wild Pokémon a turn's work turns up: each fixed check, each commit and the turn itself is a roll. */
+export function encountersRolled(work: { greens: number; commits: number; usedTools: boolean }, rand: () => number): number {
+  const rolls = [
+    ...Array<number>(work.greens).fill(ENCOUNTER_CHANCE.green),
+    ...Array<number>(work.commits).fill(ENCOUNTER_CHANCE.commit),
+    ...(work.usedTools ? [ENCOUNTER_CHANCE.turn] : []),
+  ]
+  return rolls.filter(chance => rand() < chance).length
 }
 
 /**

@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { catchWild, ENCOUNTERS_PER_DAY, encountersEarned, findInBox, release, switchTo } from '../hooks/collection'
+import { catchWild, ENCOUNTERS_PER_DAY, encountersRolled, findInBox, release, switchTo } from '../hooks/collection'
 import { boxText } from '../hooks/commands'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
 import { freshSave, parseSave, type Mon, type Save } from '../hooks/state'
 
-const counters = (greens: number, commits: number) => ({ greens, commits, configEdits: 0, feedRun: 0 })
+/** Hands out the given rolls in order. */
+const dice = (...rolls: number[]) => () => rolls.shift() ?? 0.99
 let n = 0
 const seeds = () => [++n, 7, 7, 7]
 const mon = (id: number, level = 1, extra: Partial<Mon> = {}): Mon =>
@@ -14,11 +15,20 @@ const cubone = (): Save => ({ ...freshSave([1, 2, 3, 4]), species: 104, level: 6
 const reparse = (s: unknown) => parseSave(JSON.parse(JSON.stringify(s)))
 
 describe('collection', () => {
-  test('encounters come every 5 fixed checks and every 10 commits', () => {
-    expect(encountersEarned(counters(4, 9), counters(5, 9))).toBe(1)
-    expect(encountersEarned(counters(4, 9), counters(5, 10))).toBe(2)
-    expect(encountersEarned(counters(0, 0), counters(4, 9))).toBe(0)
-    expect(encountersEarned(counters(9, 0), counters(15, 0))).toBe(2)
+  test('each fixed check (1 in 5), commit (1 in 10) and turn of tool work (3 in 100) is a roll', () => {
+    expect(encountersRolled({ greens: 2, commits: 0, usedTools: false }, dice(0.19, 0.2))).toBe(1)
+    expect(encountersRolled({ greens: 0, commits: 2, usedTools: false }, dice(0.09, 0.1))).toBe(1)
+    expect(encountersRolled({ greens: 0, commits: 0, usedTools: true }, dice(0.02))).toBe(1)
+    expect(encountersRolled({ greens: 0, commits: 0, usedTools: true }, dice(0.03))).toBe(0)
+    expect(encountersRolled({ greens: 0, commits: 0, usedTools: false }, dice(0))).toBe(0)
+    expect(encountersRolled({ greens: 1, commits: 1, usedTools: true }, dice(0, 0, 0))).toBe(3)
+  })
+
+  test('over many checks the rate is about 1 in 5', () => {
+    let seed = 1
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+    const caught = encountersRolled({ greens: 5000, commits: 0, usedTools: false }, rand)
+    expect(caught > 900 && caught < 1100).toBe(true)
   })
 
   test('a catch boxes the Pokémon at level 1, marks it caught and toasts it', () => {

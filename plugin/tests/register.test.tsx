@@ -1,6 +1,7 @@
 import type { On } from 'claude-code'
 import { describe, expect, mock, test, type Engine } from 'claude-code/testing'
 import { countsAsPrompt, shouldHandleTurn } from '../hooks/register'
+import { ENCOUNTERS_PER_DAY } from '../hooks/collection'
 import { COMMAND, EVOLVE_MS } from '../hooks/config'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
@@ -804,8 +805,8 @@ describe('register', () => {
     await ui.unmount()
   })
 
-  test('five fixed checks in a turn bring a wild Pokémon into the box with a toast', async ($, on) => {
-    const store = world(on, { save: { ...pika(), counters: { greens: 4, commits: 0, configEdits: 0, feedRun: 0 } } })
+  test('a fixed check may bring a wild Pokémon, boxed and toasted when it does', async ($, on) => {
+    const store = world(on, { save: pika() })
     checks(on, ['red'])
     mock.clock(on, { now: NOON })
     await start($)
@@ -813,10 +814,12 @@ describe('register', () => {
     await endTurn($)
     await npmTest($, 'green')
     await endTurn($)
+    // The roll is random: either way the box and the toasts agree.
     const save = store.get('save') as { box: { species: number }[]; caught: number[] }
-    expect(save.box).toHaveLength(1)
-    expect(save.caught).toContain(save.box[0]!.species)
-    expect(toasts.some(t => /A wild .+ appeared! Caught it/.test(t))).toBe(true)
+    const caughtToasts = toasts.filter(t => /A wild .+ appeared! Caught it/.test(t))
+    expect(save.box.length).toBe(caughtToasts.length)
+    expect(save.box.length <= ENCOUNTERS_PER_DAY).toBe(true)
+    for (const m of save.box) expect(save.caught).toContain(m.species)
   })
 
   test('box, switch and release as typed commands', async ($, on) => {
