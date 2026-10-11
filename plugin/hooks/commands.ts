@@ -36,26 +36,48 @@ function feedStreak(save: Save, today: string): number {
   return last !== null && last >= previousDate(today) ? save.counters.feedRun : 0
 }
 
-export function statsText(save: Save, today: string): string {
-  const sp = species(save.species)
-  const toNext = save.level >= MAX_LEVEL ? 'max level' : `${expForLevel(sp.growth, save.level + 1) - save.exp} EXP to Lv ${save.level + 1}`
-  const bag = STONES.filter(s => save.bag[s]).map(s => `${stoneName(s)} ×${save.bag[s]}`).join(', ') || 'empty'
-  const sources = Object.entries(save.expBySource).filter(([k]) => k in SOURCE_NAMES).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
-    .map(([k, n]) => `  ${SOURCE_NAMES[k as Source]}: ${n}`).join('\n') || '  nothing yet'
-  const c = save.counters
-  const streak = feedStreak(save, today)
+function toNextText(save: Save): string {
+  return save.level >= MAX_LEVEL ? 'max level' : `${expForLevel(species(save.species).growth, save.level + 1) - save.exp} EXP to Lv ${save.level + 1}`
+}
+
+function bagText(save: Save): string {
+  return STONES.filter(s => save.bag[s]).map(s => `${stoneName(s)} ×${save.bag[s]}`).join(', ')
+}
+
+function evolutionHints(sp: Species): string[] {
   const hints = sp.evolutions.map(e =>
     e.kind === 'level' ? `Evolves into ${species(e.to).name} at Lv ${e.level}.`
     : e.kind === 'stone' ? `Evolves into ${species(e.to).name} with a ${stoneName(e.stone)}.`
     : `Evolves into ${species(e.to).name} when traded: push or open a PR at Lv ${TRADE_LEVEL} or higher.`)
+  return hints.length ? hints : ['Does not evolve.']
+}
+
+/** The few stats the band shows beside the art where there is room for them (the desktop app). */
+export function bandStats(save: Save): string[] {
+  const sp = species(save.species)
+  const bag = bagText(save)
+  return [
+    `${sp.types.join(' / ')} · ${save.personality}`,
+    `${toNextText(save)} · ${save.lifetimeExp} lifetime EXP`,
+    ...evolutionHints(sp),
+    ...(bag ? [`Bag: ${bag}`] : []),
+  ]
+}
+
+export function statsText(save: Save, today: string): string {
+  const sp = species(save.species)
+  const sources = Object.entries(save.expBySource).filter(([k]) => k in SOURCE_NAMES).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+    .map(([k, n]) => `  ${SOURCE_NAMES[k as Source]}: ${n}`).join('\n') || '  nothing yet'
+  const c = save.counters
+  const streak = feedStreak(save, today)
   return [
     `${save.nickname ? `${save.nickname} (${sp.name})` : sp.name}${save.isShiny ? ' ★' : ''}  Lv ${save.level}  ${save.personality}`,
-    `${toNext}. Lifetime EXP ${save.lifetimeExp}.`,
+    `${toNextText(save)}. Lifetime EXP ${save.lifetimeExp}.`,
     'EXP by source:', sources,
-    `Bag: ${bag}`,
+    `Bag: ${bagText(save) || 'empty'}`,
     `Stone progress: Thunder Stone ${c.greens % 10}/10 green checks, Fire Stone ${c.commits % 10}/10 commits, Water Stone ${c.configEdits % 10}/10 config edits, Leaf Stone ${streak % 7}/7 feed days.`,
     `Feed streak: ${streak} day${streak === 1 ? '' : 's'}.`,
-    ...(hints.length ? hints : ['Does not evolve.']),
+    ...evolutionHints(sp),
   ].join('\n')
 }
 

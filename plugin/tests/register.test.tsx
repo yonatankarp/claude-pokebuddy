@@ -941,7 +941,7 @@ describe('register', () => {
     }
   })
 
-  test('the full band draws its art as an Svg on desktop and as half-blocks in the terminal', async ($, on) => {
+  test('the full band draws its art as an Svg with the stats beside it on desktop, half-blocks alone in the terminal', async ($, on) => {
     world(on, { save: { ...pika(), view: 'full' as const } })
     mock.clock(on)
     await start($)
@@ -953,6 +953,8 @@ describe('register', () => {
       })
       expect(await ui.find({ type: 'Svg' }) !== undefined).toBe(surface === 'desktop')
       expect(await ui.find({ type: 'Text', text: /▀/ }) !== undefined).toBe(surface === 'terminal')
+      expect(await ui.find({ type: 'Text', text: /EXP to Lv 6 · \d+ lifetime EXP/ }) !== undefined).toBe(surface === 'desktop')
+      expect(await ui.find({ type: 'Text', text: /Evolves into RAICHU with a THUNDER STONE/ }) !== undefined).toBe(surface === 'desktop')
       await ui.unmount()
     }
   })

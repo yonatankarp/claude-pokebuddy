@@ -3,6 +3,7 @@
 ## 1.0.2 (2026-10-11)
 
 - The Claude desktop app and the editor count as a person watching: the buddy now speaks, earns EXP, logs turns and judges past sessions there. They host the session through the SDK, so it used to be treated like a headless `-p` run.
+- In the desktop app the full view shows the buddy's stats beside the sprite: types, nature, EXP to the next level, lifetime EXP, how it evolves and the bag.
 
 ## 1.0.1 (2026-10-11)
 
