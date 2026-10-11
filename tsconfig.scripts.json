@@ -2,9 +2,9 @@
   "compilerOptions": {
     "target": "es2023", "module": "esnext", "moduleResolution": "bundler",
     "strict": true, "noEmit": true, "skipLibCheck": true,
-    "typeRoots": ["node_modules/@types", ".claude-plugin/types"], "types": ["node", "claude-code"],
-    "jsx": "react", "jsxFactory": "h", "jsxFragmentFactory": "Fragment",
+    "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["scripts", "hooks/data/types.ts", "hooks/codec.ts"]
+  "include": ["scripts", "hooks/data/types.ts", "hooks/codec.ts"],
+  "exclude": ["scripts/screenshots.ts", "scripts/screenshots.spec.ts"]
 }
