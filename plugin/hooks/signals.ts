@@ -120,10 +120,21 @@ const normalise = (seg: string[]) => {
   return out.slice(i).filter(t => t !== '')
 }
 
+const CONFIG_NAMES = new Set(['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md'])
+// Under a `.claude/` directory but not config: worktree checkouts, session transcripts and memory, plans.
+const NOT_CONFIG_UNDER_CLAUDE = new Set(['worktrees', 'projects', 'plans'])
+
+/**
+ * CLAUDE.md, CLAUDE.local.md and AGENTS.md at any depth, and any file under a `.claude/` directory except
+ * its worktrees, projects and plans; nothing under node_modules. The innermost `.claude` decides, so a
+ * worktree's own `.claude/settings.json` counts while its source files do not.
+ */
 export function isConfigPath(path: string): boolean {
-  const name = path.split('/').pop() ?? ''
-  if (name === 'CLAUDE.md' || name === 'CLAUDE.local.md' || name === 'AGENTS.md') return true
-  return path.includes('/.claude/') || path.startsWith('.claude/')
+  const parts = path.replace(/\\/g, '/').split('/')
+  if (parts.includes('node_modules')) return false
+  if (CONFIG_NAMES.has(parts[parts.length - 1] ?? '')) return true
+  const at = parts.lastIndexOf('.claude')
+  return at !== -1 && at < parts.length - 1 && !NOT_CONFIG_UNDER_CLAUDE.has(parts[at + 1]!)
 }
 
 function gitArgs(seg: string[]): { sub: string | undefined; args: string[] } {
@@ -176,7 +187,7 @@ export function checkKey(tokens: readonly string[]): string {
 /** An older build's key (the whole normalised command) as this build keys it. */
 export const rekeyCheck = (key: string) => checkKey(key.split(/\s+/).filter(Boolean))
 
-function bashSignals(command: string, ok: boolean): Signal[] {
+function bashSignals(command: string, ok: boolean, resultText: string): Signal[] {
   const raw = splitRaw(command)
   if (raw.slice(0, -1).some(s => s.sep === '||' || s.sep === ';' || s.sep === '\n' || s.sep === '&')) return []
   if (raw[raw.length - 1]?.sep === '&') return []
@@ -189,8 +200,8 @@ function bashSignals(command: string, ok: boolean): Signal[] {
     if (cmd === 'git') {
       const { sub, args } = gitArgs(seg)
       if (!ok) continue
-      if (sub === 'commit' && !hasFlag(args, ['--dry-run'])) out.push({ kind: 'commit' })
-      else if (sub === 'push' && !hasFlag(args, ['--dry-run', '-n'])) out.push({ kind: 'push' })
+      if (sub === 'commit' && !hasFlag(args, ['--dry-run', '--allow-empty'])) out.push({ kind: 'commit' })
+      else if (sub === 'push' && !hasFlag(args, ['--dry-run', '-n']) && !resultText.includes('Everything up-to-date')) out.push({ kind: 'push' })
     } else if (cmd === 'gh') {
       if (ok && seg[1] === 'pr' && seg[2] === 'create') out.push({ kind: 'pr' })
     } else if (isCheck(seg) && (ok || segs.length === 1)) {
@@ -200,11 +211,12 @@ function bashSignals(command: string, ok: boolean): Signal[] {
   return out
 }
 
-export function signalsFromTool(tool: string, input: Record<string, unknown>, outcome: Outcome): Signal[] {
+/** `resultText` is the result as the model read it: a push that had nothing to send says so there. */
+export function signalsFromTool(tool: string, input: Record<string, unknown>, outcome: Outcome, resultText = ''): Signal[] {
   const out: Signal[] = [{ kind: 'tool' }]
   if (outcome === 'unknown') return out
   if (tool === 'Bash' && typeof input.command === 'string' && input.run_in_background !== true) {
-    out.push(...bashSignals(input.command, outcome === 'ok'))
+    out.push(...bashSignals(input.command, outcome === 'ok', resultText))
   }
   if (outcome === 'ok' && (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit') && typeof input.file_path === 'string' && isConfigPath(input.file_path)) {
     out.push({ kind: 'config', path: input.file_path })

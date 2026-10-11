@@ -70,6 +70,20 @@ describe('signalsFromTool', () => {
     expect(isConfigPath('/r/CLAUDE.local.md')).toBe(true)
     expect(isConfigPath('/r/hooks/register.tsx')).toBe(false)
   })
+  test('isConfigPath: worktrees, transcripts, memory, plans and node_modules are not config', () => {
+    expect(isConfigPath('/r/.claude/worktrees/a/src/x.ts')).toBe(false)
+    expect(isConfigPath('/r/.claude/worktrees/a/.claude/settings.json')).toBe(true)
+    expect(isConfigPath('/r/.claude/worktrees/a/CLAUDE.md')).toBe(true)
+    expect(isConfigPath('/Users/me/.claude/plans/happy-fox.md')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/projects/-r/memory/MEMORY.md')).toBe(false)
+    expect(isConfigPath('/Users/me/.claude/projects/-r/abc.jsonl')).toBe(false)
+    expect(isConfigPath('/r/node_modules/pkg/CLAUDE.md')).toBe(false)
+    expect(isConfigPath('/r/node_modules/pkg/.claude/settings.json')).toBe(false)
+    expect(isConfigPath('/r/.claude/settings.local.json')).toBe(true)
+    expect(isConfigPath('.claude/commands/ship.md')).toBe(true)
+    expect(isConfigPath('C:\\r\\.claude\\settings.json')).toBe(true)
+    expect(isConfigPath('/r/.claude')).toBe(false)
+  })
 })
 
 describe('signalsFromTool hardening', () => {
@@ -112,6 +126,11 @@ describe('signalsFromTool hardening', () => {
     expect(bash('pytest -q')).toEqual(['tool', 'check:pytest:true'])
     expect(bash('go test ./...')).toEqual(['tool', 'check:go test:true'])
     expect(bash('make -j4 build')).toEqual(['tool', 'check:make:true'])
+  })
+  test('empty commits and pushes with nothing to send earn nothing', () => {
+    expect(bash('git commit --allow-empty -m a && git commit --allow-empty -m b')).toEqual(['tool'])
+    expect(signalsFromTool('Bash', { command: 'git push' }, 'ok', 'Everything up-to-date').map(label)).toEqual(['tool'])
+    expect(signalsFromTool('Bash', { command: 'git push' }, 'ok', 'To github.com:x/y.git\n   a..b  main -> main').map(label)).toEqual(['tool', 'push'])
   })
   test('dry-run flags', () => {
     expect(bash('git push -n')).toEqual(['tool'])

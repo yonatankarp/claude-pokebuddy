@@ -306,6 +306,18 @@ describe('register', () => {
     expect(after.counters.commits).toBe(1)
   })
 
+  test('a chain of commits in one turn counts three', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    mock.clock(on, { now: NOON })
+    await start($)
+    await bash($, Array.from({ length: 6 }, (_, i) => `git commit -m c${i}`).join(' && '))
+    await endTurn($)
+    const after = store.get('save') as Stored
+    expect(after.expBySource.commit).toBe(90)
+    expect(after.counters.commits).toBe(3)
+  })
+
   test('a Bash commit that fails (isError) earns no commit EXP', async ($, on) => {
     const store = world(on, { save: freshSave([1, 2, 3, 4]) })
     loop(on)
