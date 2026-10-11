@@ -1,0 +1,10 @@
+name: Idea
+description: Suggest something your buddy should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+    validations:
+      required: true
