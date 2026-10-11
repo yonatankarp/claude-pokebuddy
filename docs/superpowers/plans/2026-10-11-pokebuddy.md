@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Mod name `claude-pokebuddy`; install line `/plugin install claude-pokebuddy --marketplace yonatankarp/claude-pokebuddy`.
+- Plugin name `pokebuddy` (the `claude-` prefix is reserved), repository `claude-pokebuddy`; install line `/plugin install pokebuddy --marketplace yonatankarp/claude-pokebuddy`.
 - The hooks module and everything it imports: no Node, no DOM, no `require`, no dynamic `import()`. Everything outside goes through `$`.
 - Species #1 to #151 only; any evolution target or pre-evolution with id > 151 is ignored.
 - Roll weights: multi-stage base 1, single-stage base 0.33, legendaries (144, 145, 146, 150, 151) 0.02. Shiny 1 in 512. Start level 5.
@@ -152,7 +152,7 @@ scripts/raw/
 ```ts
 declare module 'claude-code' {
   interface PluginState {
-    'claude-pokebuddy': { spike: string }
+    'pokebuddy': { spike: string }
   }
 }
 export {}
@@ -2516,7 +2516,7 @@ git commit -m "feat: /buddy sub-commands and their texts"
 State held where:
 - `$.store` key `save`: the `Save`.
 - `$.store` key `save.bak`: the raw value of a corrupt save, written before a fresh roll, or the previous save before an import.
-- `$.state` (`types/index.d.ts`), plugin `claude-pokebuddy`: `save: Save | null` (mirror for drawing), `bubble: string | null`, `flashUntil: number`, `readOnly: boolean`.
+- `$.state` (`types/index.d.ts`), plugin `pokebuddy`: `save: Save | null` (mirror for drawing), `bubble: string | null`, `flashUntil: number`, `readOnly: boolean`.
 - Module variables (reset on reload, fine): the current turn's `Tally`, `lastWindow`, the time-zone `offset`.
 
 - [ ] **Step 1: Write the contract**
@@ -2527,7 +2527,7 @@ import type { Save } from '../hooks/state'
 
 declare module 'claude-code' {
   interface PluginState {
-    'claude-pokebuddy': {
+    'pokebuddy': {
       save: Save | null
       bubble: string | null
       flashUntil: number
@@ -2634,7 +2634,7 @@ describe('register', () => {
       await $.command.run({ command: 'buddy', args: 'stats' })
       for (const [maxRows, columns] of [[1, 40], [3, 120], [60, 200]] as const) {
         const ui = await $.ui.mount({
-          plugin: 'claude-pokebuddy', surface, component: 'AbovePrompt',
+          plugin: 'pokebuddy', surface, component: 'AbovePrompt',
           props: { hasSurvey: false, isWorking: false, maxRows },
           viewport: { columns, rows: 50 },
         })
@@ -2670,7 +2670,7 @@ import { speak, turnFacts } from './speech'
 import { exportBlob, freshSave, importBlob, parseSave, type Save } from './state'
 import { emptyTally, scoreTally, type Tally } from './tally'
 
-const P = 'claude-pokebuddy'
+const P = 'pokebuddy'
 const saveAtom = atom({ plugin: P, key: 'save' } as const, null)
 const bubbleAtom = atom({ plugin: P, key: 'bubble' } as const, null)
 const flashAtom = atom({ plugin: P, key: 'flashUntil' } as const, 0)
@@ -2949,7 +2949,7 @@ Each fix: a failing test in the owning task's test file, the fix, the full suite
 
 - [ ] **Step 1: README**
 
-Sections, in this order, no em dashes: what it is (one paragraph and a screenshot placeholder path `docs/screenshot.png` the user adds); Requirements (Claude Code 2.1.296 or newer; the mod API is early access and may change between releases); Install (the code block `/plugin install claude-pokebuddy --marketplace yonatankarp/claude-pokebuddy`, then "answer `y` to add the marketplace and pick the user scope"); Commands (the help list); How EXP works (the table from the spec); Evolution (levels, the stone table, trades at Lv 36+, Eevee by stone); Cost and privacy (one Haiku call per turn and one per session start, only a fact summary is sent, never code or prompts; `/buddy quiet` and the `speechModel` option); Building the data (`npm ci && npm run data`); Disclaimer (the LICENSE paragraph).
+Sections, in this order, no em dashes: what it is (one paragraph and a screenshot placeholder path `docs/screenshot.png` the user adds); Requirements (Claude Code 2.1.296 or newer; the mod API is early access and may change between releases); Install (the code block `/plugin install pokebuddy --marketplace yonatankarp/claude-pokebuddy`, then "answer `y` to add the marketplace and pick the user scope"); Commands (the help list); How EXP works (the table from the spec); Evolution (levels, the stone table, trades at Lv 36+, Eevee by stone); Cost and privacy (one Haiku call per turn and one per session start, only a fact summary is sent, never code or prompts; `/buddy quiet` and the `speechModel` option); Building the data (`npm ci && npm run data`); Disclaimer (the LICENSE paragraph).
 
 - [ ] **Step 2: CI**
 

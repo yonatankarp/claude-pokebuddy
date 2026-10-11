@@ -7,7 +7,7 @@ Date: 2026-10-11. Status: approved in conversation, awaiting written-spec review
 A Claude Code mod that brings back the buddy as a Gen 1 Pokémon that levels up and evolves from real work. It is a public, installable plugin:
 
 ```
-/plugin install claude-pokebuddy --marketplace yonatankarp/claude-pokebuddy
+/plugin install pokebuddy --marketplace yonatankarp/claude-pokebuddy
 ```
 
 It uses real Pokémon names, Gen 2 Crystal sprites and Crystal dex text. The maintainer accepts the takedown risk. The README carries a fan-project disclaimer (not affiliated with Nintendo, Game Freak or The Pokémon Company).
