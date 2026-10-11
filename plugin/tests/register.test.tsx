@@ -47,7 +47,8 @@ function loop(on: On) {
   on('turn.complete', async (_$, e) => ({ text: e.answer }))
 }
 
-const NOON = Date.UTC(2026, 9, 11, 12)
+// Local noon, so the day and the hour (the Moon Stone is before 5) are the same in every time zone.
+const NOON = new Date(2026, 9, 11, 12).getTime()
 const prompt = ($: Engine, text = 'fix it') => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
 const bash = ($: Engine, command: string) => $.tool.call({ tool: 'Bash', command })
 const endTurn = ($: Engine, agentId?: string) =>
@@ -67,7 +68,7 @@ const HOUR = 60 * 60 * 1000
 describe('register', () => {
   test('first session rolls and stores a save', async ($, on) => {
     const store = world(on)
-    mock.clock(on, { now: Date.UTC(2026, 9, 11, 12) })
+    mock.clock(on, { now: NOON })
     await start($)
     await $.command.run(run('stats'))
     const save = store.get('save') as { level: number; species: number } | undefined
@@ -269,7 +270,7 @@ describe('register', () => {
 
   test('feed once a day through the command', async ($, on) => {
     const store = world(on, { save: freshSave([1, 2, 3, 4]) })
-    mock.clock(on, { now: Date.UTC(2026, 9, 11, 12) })
+    mock.clock(on, { now: NOON })
     await start($)
     const first = await $.command.run(run('feed'))
     expect(first.text).toMatch(/Rare Candy/)
@@ -290,7 +291,7 @@ describe('register', () => {
   test('a change another session wrote to the store survives this session\'s next command', async ($, on) => {
     const s = freshSave([1, 2, 3, 4])
     const store = world(on, { save: s })
-    mock.clock(on, { now: Date.UTC(2026, 9, 11, 12) })
+    mock.clock(on, { now: NOON })
     await start($)
     await $.command.run(run('stats'))
     store.set('save', { ...s, nickname: 'Other', lifetimeExp: 999 })
@@ -682,6 +683,79 @@ describe('register', () => {
     await clock.advance(1)
     expect(modelCalls).toHaveLength(0)
     expect(store.get('save')).toEqual(s)
+  })
+
+  test('a headless /buddy feed earns nothing', async ($, on) => {
+    const s = freshSave([1, 2, 3, 4])
+    const store = world(on, { save: s })
+    mock.clock(on, { now: NOON })
+    await start($, false)
+    expect((await $.command.run(run('feed'))).text).toMatch(/needs you at the terminal/)
+    expect(store.get('save')).toEqual(s)
+  })
+
+  test('feeding at Lv 100 says there is no EXP to gain', async ($, on) => {
+    const growth = species(25).growth
+    world(on, { save: { ...freshSave([1, 2, 3, 4]), species: 25, level: 100, exp: expForLevel(growth, 100) } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    const r = await $.command.run(run('feed'))
+    expect(r.text).toMatch(/already at Lv 100/)
+    expect(r.text).not.toMatch(/\+0 EXP/)
+  })
+
+  test('a nickname is cut at 12 characters without splitting an emoji', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    mock.clock(on, { now: NOON })
+    await start($)
+    await $.command.run(run(`nickname ${'🔥'.repeat(14)}`))
+    expect((store.get('save') as { nickname: string }).nickname).toBe('🔥'.repeat(12))
+    expect((await $.command.run(run('stats'))).text).not.toMatch(/could not be read/)
+  })
+
+  test('a /buddy quiet while the model answers keeps the bubble away', async ($, on) => {
+    world(on, { save: pika() })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    try {
+      await start($)
+      modelReply = 'Pika, too late'
+      await prompt($)
+      await endTurn($)
+      await $.command.run(run('quiet'))
+      await clock.advance(1)
+      const ui = await band($)
+      expect(await ui.find({ type: 'Text', text: /too late/ })).toBeUndefined()
+      await ui.unmount()
+    } finally {
+      modelReply = '42'
+    }
+  })
+
+  test('speech hears the turn\'s first prompt, not one queued while it ran', async ($, on) => {
+    world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await prompt($, 'the first ask')
+    await prompt($, 'a queued ask')
+    await endTurn($)
+    await clock.advance(1)
+    expect(modelCalls[0]).toContain('the first ask')
+    expect(modelCalls[0]).not.toContain('a queued ask')
+  })
+
+  test('a prompt draws the save another session wrote', async ($, on) => {
+    const s = pika()
+    const store = world(on, { save: s })
+    loop(on)
+    mock.clock(on, { now: NOON })
+    await start($)
+    store.set('save', { ...s, nickname: 'Elsewhere' })
+    await prompt($)
+    const ui = await band($)
+    expect(await ui.find({ type: 'Text', text: /Elsewhere/ })).toBeDefined()
+    await ui.unmount()
   })
 
   test('only main-loop turns are handled', () => {

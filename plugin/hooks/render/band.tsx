@@ -22,6 +22,22 @@ const BUBBLE_FRAME = 4
 // Less room than this on the line drops the inline bubble rather than show a stub of it.
 const INLINE_MIN = 12
 
+/** Cells a code point takes: 0 for joiners and combining marks, 2 for East Asian wide letters and emoji. */
+function codePointWidth(cp: number): number {
+  if ((cp >= 0x300 && cp <= 0x36f) || cp === 0x200d || (cp >= 0xfe00 && cp <= 0xfe0f)) return 0
+  if ((cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0xa4cf) || (cp >= 0xac00 && cp <= 0xd7a3) ||
+    (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) ||
+    (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f300 && cp <= 0x1faff) || (cp >= 0x20000 && cp <= 0x3fffd)) return 2
+  return 1
+}
+
+/** Terminal cells `text` takes, so a nickname of wide letters or emoji is measured as drawn. */
+export function cellWidth(text: string): number {
+  let n = 0
+  for (const ch of text) n += codePointWidth(ch.codePointAt(0)!)
+  return n
+}
+
 /** Words wrapped to `width`; a word longer than that is broken. */
 export function wrapText(text: string, width: number): string[] {
   const lines: string[] = []
@@ -63,18 +79,23 @@ export function sideBubble(sp: Species, bubble: string | null, rows: number, col
   return { width, lines: cutLines(wrapText(bubble, width - BUBBLE_FRAME), room, width - BUBBLE_FRAME) }
 }
 
-/** The band's full view: the icon with the bubble beside it if it fits, else over the line; null is the line alone. */
-export function bandLayout(view: BandView, maxRows: number, columns: number): Layout | null {
+/**
+ * The band's full view: the icon with the bubble beside it if it fits, else over the line; null is the line
+ * alone. Off fullscreen `maxRows` is the whole terminal, so a full view taller than half of it gives way to
+ * the line; in fullscreen the engine has already capped the band's slot.
+ */
+export function bandLayout(view: BandView, maxRows: number, columns: number, isFullscreen: boolean): Layout | null {
   if (!view.showFull) return null
   const sp = species(view.save.species)
+  const fits = (rows: number) => isFullscreen || rows <= maxRows / 2
   const side = sideBubble(sp, view.bubble, maxRows, columns, 1)
-  if (side) return { side }
-  return fitArt(sp, maxRows - 1, columns) ? { side: null } : null
+  if (side && fits(Math.max(artSize(sp).rows, (side.lines.length > 0 ? side.lines.length + 2 : 0) + 1))) return { side }
+  return fitArt(sp, maxRows - 1, columns) && fits(artSize(sp).rows + 1) ? { side: null } : null
 }
 
 /** Whether the band draws the icon. */
-export function bandHasArt(view: BandView, maxRows: number, columns: number): boolean {
-  return bandLayout(view, maxRows, columns) !== null
+export function bandHasArt(view: BandView, maxRows: number, columns: number, isFullscreen: boolean): boolean {
+  return bandLayout(view, maxRows, columns, isFullscreen) !== null
 }
 
 /** The rows of the icon in the buddy's palette, shiny or not. */
@@ -105,7 +126,7 @@ export function bubbleBox({ Box, Text }: BandElements, side: Side) {
   )
 }
 
-export function band(els: BandElements, view: BandView, maxRows: number, columns: number) {
+export function band(els: BandElements, view: BandView, maxRows: number, columns: number, isFullscreen: boolean) {
   const { Box, Text } = els
   const { save } = view
   const sp = species(save.species)
@@ -113,7 +134,7 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
   const typeColor = TYPE_COLOR[sp.types[0]!]
   const title = view.evolving ? `What? ${sp.name} is evolving!` : name
   const level = ` Lv${save.level} `
-  const room = columns - (2 + title.length + (save.isShiny ? 2 : 0) + level.length + 8)
+  const room = columns - (2 + cellWidth(title) + (save.isShiny ? 2 : 0) + level.length + 8)
   const said = view.bubble ? ` │ “${view.bubble}”` : ''
   const inline = room < INLINE_MIN || !said ? null : said.length <= room ? said : said.slice(0, room - 1) + '…'
   const line = (isBubbleInline: boolean) => (
@@ -126,7 +147,7 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
       {isBubbleInline && inline && <Text dimColor wrap="truncate-end">{inline}</Text>}
     </Box>
   )
-  const layout = bandLayout(view, maxRows, columns)
+  const layout = bandLayout(view, maxRows, columns, isFullscreen)
   if (layout === null) return line(true)
   const art = drawRows(els, artRows(view))
   if (layout.side === null) {

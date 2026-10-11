@@ -72,7 +72,7 @@ describe('save', () => {
     expect(corrupt({ evolution: { to: 0 } })).toBe('corrupt')
     expect(corrupt({ evolution: { to: 152 } })).toBe('corrupt')
     expect(corrupt({ evolution: 5 })).toBe('corrupt')
-    expect(corrupt({ evolution: { to: 5 } })).toBe('ok')
+    expect(corrupt({ species: 4, exp: expForLevel(species(4).growth, 5), evolution: { to: 5 } })).toBe('ok')
     expect(corrupt({ cancelledAtLevel: 0 })).toBe('corrupt')
     expect(corrupt({ cancelledAtLevel: 101 })).toBe('corrupt')
   })
@@ -87,6 +87,21 @@ describe('save', () => {
     const floor = expForLevel(species(s.species).growth, 50)
     expect(corrupt({ level: 50, exp: floor - 1 })).toBe('corrupt')
     expect(corrupt({ level: 50, exp: floor })).toBe('ok')
+  })
+  test('rejects a level its EXP does not reach and EXP past the next level', () => {
+    const growth = species(s.species).growth
+    expect(corrupt({ exp: expForLevel(growth, 6) })).toBe('corrupt')
+    expect(corrupt({ exp: expForLevel(growth, 6) - 1 })).toBe('ok')
+    expect(corrupt({ level: 100, exp: expForLevel(growth, 100) })).toBe('ok')
+  })
+  test('an evolution in progress must be one the species has', () => {
+    const charmander = { species: 4, level: 16, exp: expForLevel(species(4).growth, 16) }
+    expect(corrupt({ ...charmander, evolution: { to: 5 } })).toBe('ok')
+    expect(corrupt({ ...charmander, evolution: { to: 150 } })).toBe('corrupt')
+  })
+  test('a nickname is up to 12 characters, an emoji counting as one', () => {
+    expect(corrupt({ nickname: '🔥'.repeat(12) })).toBe('ok')
+    expect(corrupt({ nickname: '🔥'.repeat(13) })).toBe('corrupt')
   })
   test('rejects bad view, speechOn, isShiny, personality, nickname', () => {
     expect(corrupt({ view: 'huge' })).toBe('corrupt')

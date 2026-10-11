@@ -2,6 +2,7 @@ import { species } from './data/dex'
 import { STONES, type Species, type Stone } from './data/types'
 import { TRADE_LEVEL } from './evolution'
 import { expForLevel, MAX_LEVEL } from './exp'
+import { previousDate } from './localtime'
 import type { Save } from './state'
 import type { Source } from './tally'
 
@@ -28,13 +29,20 @@ const SOURCE_NAMES: Record<Source, string> = {
   push: 'pushes and PRs', green: 'green checks', judge: 'session judge', feed: 'feeding',
 }
 
-export function statsText(save: Save): string {
+/** The feed streak as of `today`: a run whose last feed was before yesterday is already broken. */
+export function feedStreak(save: Save, today: string): number {
+  const last = save.feed.lastDate
+  return last !== null && last >= previousDate(today) ? save.counters.feedRun : 0
+}
+
+export function statsText(save: Save, today: string): string {
   const sp = species(save.species)
   const toNext = save.level >= MAX_LEVEL ? 'max level' : `${expForLevel(sp.growth, save.level + 1) - save.exp} EXP to Lv ${save.level + 1}`
   const bag = STONES.filter(s => save.bag[s]).map(s => `${stoneName(s)} ×${save.bag[s]}`).join(', ') || 'empty'
   const sources = Object.entries(save.expBySource).filter(([k]) => k in SOURCE_NAMES).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
     .map(([k, n]) => `  ${SOURCE_NAMES[k as Source]}: ${n}`).join('\n') || '  nothing yet'
   const c = save.counters
+  const streak = feedStreak(save, today)
   const hints = sp.evolutions.map(e =>
     e.kind === 'level' ? `Evolves into ${species(e.to).name} at Lv ${e.level}.`
     : e.kind === 'stone' ? `Evolves into ${species(e.to).name} with a ${stoneName(e.stone)}.`
@@ -44,8 +52,8 @@ export function statsText(save: Save): string {
     `${toNext}. Lifetime EXP ${save.lifetimeExp}.`,
     'EXP by source:', sources,
     `Bag: ${bag}`,
-    `Stone progress: Thunder Stone ${c.greens % 10}/10 green checks, Fire Stone ${c.commits % 10}/10 commits, Water Stone ${c.configEdits % 10}/10 config edits, Leaf Stone ${c.feedRun % 7}/7 feed days.`,
-    `Feed streak: ${c.feedRun} day${c.feedRun === 1 ? '' : 's'}.`,
+    `Stone progress: Thunder Stone ${c.greens % 10}/10 green checks, Fire Stone ${c.commits % 10}/10 commits, Water Stone ${c.configEdits % 10}/10 config edits, Leaf Stone ${streak % 7}/7 feed days.`,
+    `Feed streak: ${streak} day${streak === 1 ? '' : 's'}.`,
     ...(hints.length ? hints : ['Does not evolve.']),
   ].join('\n')
 }

@@ -105,7 +105,8 @@ export function applyTurn(save: Save, scored: ReturnType<typeof scoreTally>, loc
 }
 
 export function feed(save: Save, local: LocalTime): Result & { fed: boolean; gained: number } {
-  if (save.feed.lastDate === local.date) return { save, events: [], fed: false, gained: 0 }
+  // `>=`: a clock moved back to an earlier day cannot feed again.
+  if (save.feed.lastDate !== null && save.feed.lastDate >= local.date) return { save, events: [], fed: false, gained: 0 }
   const run = save.feed.lastDate === previousDate(local.date) ? save.counters.feedRun + 1 : 1
   const growth = species(save.species).growth
   const toNext = save.level >= MAX_LEVEL ? 0 : expForLevel(growth, save.level + 1) - save.exp

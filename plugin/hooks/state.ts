@@ -2,7 +2,7 @@ import type { Save } from '../types'
 import { base64Decode, base64Encode, fnv1a, fromUtf8, utf8 } from './codec'
 import { CHECKS_MAX, PENDING_LOG_MAX } from './config'
 import { STONES } from './data/types'
-import { expForLevel } from './exp'
+import { expForLevel, levelForExp } from './exp'
 import { FINISHED_MAX, normaliseLine } from './judge'
 import { rekeyCheck } from './signals'
 import { species } from './data/dex'
@@ -10,6 +10,8 @@ import { PERSONALITIES, rollFrom } from './roll'
 
 export const SAVE_VERSION = 1
 export const START_LEVEL = 5
+/** Characters (code points, so an emoji is one) a nickname may have. */
+export const NICKNAME_MAX = 12
 
 export type { Save }
 
@@ -44,10 +46,11 @@ function validSave(raw: Record<string, unknown>): boolean {
   if (!Array.isArray(raw.seed) || raw.seed.length !== 4 || !raw.seed.every(n => typeof n === 'number' && Number.isInteger(n))) return false
   if (!isInt(raw.species, 1, 151) || !isInt(raw.level, 1, 100)) return false
   const growth = species(raw.species as number).growth
-  if (!isNum(raw.exp, expForLevel(growth, raw.level as number), expForLevel(growth, 100))) return false
+  // The level is the one its EXP reaches: no Gen 1 evolution changes the growth rate, so this holds through them.
+  if (!isNum(raw.exp, 0, expForLevel(growth, 100)) || levelForExp(growth, raw.exp) !== raw.level) return false
   if (!isNum(raw.lifetimeExp, 0)) return false
   if (typeof raw.isShiny !== 'boolean' || !(PERSONALITIES as readonly unknown[]).includes(raw.personality)) return false
-  if (raw.nickname !== null && (typeof raw.nickname !== 'string' || raw.nickname.length > 12)) return false
+  if (raw.nickname !== null && (typeof raw.nickname !== 'string' || [...raw.nickname].length > NICKNAME_MAX)) return false
   if (!isObj(raw.expBySource) || !Object.entries(raw.expBySource).every(([k, v]) => !SOURCES.includes(k) || isNum(v, 0))) return false
   if (!isObj(raw.bag) || !Object.entries(raw.bag).every(([k, v]) => !(STONES as readonly string[]).includes(k) || isInt(v, 0, Number.MAX_SAFE_INTEGER))) return false
   if (!isObj(raw.counters) || !COUNTERS.every(k => isInt((raw.counters as Record<string, unknown>)[k], 0, Number.MAX_SAFE_INTEGER))) return false
@@ -56,7 +59,8 @@ function validSave(raw: Record<string, unknown>): boolean {
   if (!isObj(raw.feed) || !isDate(raw.feed.lastDate)) return false
   if (!Array.isArray(raw.pendingLog) || raw.pendingLog.length > PENDING_LOG_MAX || !raw.pendingLog.every(x => typeof x === 'string')) return false
   if (typeof raw.speechOn !== 'boolean' || (raw.view !== 'compact' && raw.view !== 'full')) return false
-  if (raw.evolution !== null && !(isObj(raw.evolution) && isInt(raw.evolution.to, 1, 151))) return false
+  const evolvesInto = species(raw.species as number).evolutions.map(e => e.to)
+  if (raw.evolution !== null && !(isObj(raw.evolution) && evolvesInto.includes(raw.evolution.to as number))) return false
   if (raw.cancelledAtLevel !== null && !isInt(raw.cancelledAtLevel, 1, 100)) return false
   if (raw.lastResetDate !== undefined && !isDate(raw.lastResetDate)) return false
   if (raw.finishedSessions !== undefined && !(Array.isArray(raw.finishedSessions) && raw.finishedSessions.length <= FINISHED_MAX && raw.finishedSessions.every(x => typeof x === 'string'))) return false
@@ -94,6 +98,7 @@ function normalise(save: Save): Save {
   }
 }
 
+/** The checksum only catches a blob damaged in copying; it signs nothing, so an import is trusted as a local game's. */
 export function exportBlob(save: Save): string {
   const body = JSON.stringify(save)
   return base64Encode(utf8(`${fnv1a(body)}.${body}`))

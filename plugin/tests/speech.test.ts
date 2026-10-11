@@ -20,6 +20,9 @@ describe('speech', () => {
   })
   test('cry is built from the name', () => {
     expect(cry('PIKACHU', () => 0)).toMatch(/^Pika/)
+    expect(cry('MR. MIME', () => 0)).toBe('Mr!')
+    expect(cry("FARFETCH'D", () => 0)).toBe('Farf!')
+    expect(cry('NIDORAN♀', () => 0)).toBe('Nido!')
   })
   test('prompt carries species, level and personality', () => {
     const s = freshSave([1, 2, 3, 4])

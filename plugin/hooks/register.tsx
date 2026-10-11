@@ -5,11 +5,11 @@ import { COMMAND, DENIED_MAX, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './con
 import { findSpecies, species } from './data/dex'
 import { applyExp, applyTurn, cancelEvolution, feed, finishEvolution, useStone, type GameEvent } from './game'
 import { FINISHED_MAX, judge, lineSession, tagLine, takeEnded } from './judge'
-import { localTime, readOffset } from './localtime'
+import { localTime } from './localtime'
 import { band, type BandView } from './render/band'
 import { signalsFromTool, type Outcome } from './signals'
 import { EXCERPT_MAX, speak, turnFacts } from './speech'
-import { exportBlob, freshSave, importBlob, parseSave, type Save } from './state'
+import { exportBlob, freshSave, importBlob, NICKNAME_MAX, parseSave, type Save } from './state'
 import { emptyTally, scoreTally, withoutReds, type Tally } from './tally'
 
 const saveAtom = atom({ plugin: 'pokebuddy', key: 'save' } as const, null)
@@ -153,7 +153,6 @@ function scheduleEvolution($: EngineInterface) {
 /** The loader follows `$` only into this file, so the pure modules get a client that spells each call out. */
 function clients($: EngineInterface) {
   return {
-    process: { run: (...a: Parameters<EngineInterface['process']['run']>) => $.process.run(...a) },
     model: { complete: (...a: Parameters<EngineInterface['model']['complete']>) => $.model.complete(...a) },
   }
 }
@@ -174,7 +173,6 @@ export const register: Register = (on, options) => {
   let turnPrompt: string | null = null
   let tally: Tally = emptyTally()
   let lastWindow = -1
-  let offset: number | null = null
   // Until a session.start says otherwise (a reload may not raise one), assume a person is there.
   let isInteractive = true
 
@@ -182,7 +180,6 @@ export const register: Register = (on, options) => {
     blocked.isToasted = false
     isInteractive = e.isInteractive
     await $.command.register({ name: 'buddy', description: 'Your Gen 1 Pokémon buddy: stats, dex, feed, evolve' })
-    offset = await readOffset(clients($))
     // A reload or exit inside the evolution window drops its timer; finish it now.
     const loaded = await mutate($, s => (s.evolution ? finishEvolution(s) : { save: s }))
     if (!isInteractive) return next(e)
@@ -222,9 +219,13 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   on('prompt.submit', async ($, e, next) => {
+    // Another session may have written the save since this one last did: draw what is stored.
+    const stored = parseSave(await $.store.get('save'))
+    if (stored.kind === 'ok') await update($, saveAtom, () => stored.save)
     if (countsAsPrompt(e)) {
       tally.prompts++
-      turnPrompt = e.text.slice(0, EXCERPT_MAX)
+      // The turn's first prompt: one typed while the turn runs waits in the queue and is not this turn's.
+      turnPrompt ??= e.text.slice(0, EXCERPT_MAX)
       const window = Math.floor((await $.clock.now()) / WINDOW_MS)
       if (window !== lastWindow) { tally.activeWindows++; lastWindow = window }
     }
@@ -256,7 +257,7 @@ export const register: Register = (on, options) => {
     if (!isInteractive) return result
     const sid = await $.session.id()
     const now = await $.clock.now()
-    const local = localTime(now, offset)
+    const local = localTime(now)
     const facts = turnFacts(turn.signals, turn.prompts)
     const r = await mutate($, s => {
       const applied = applyTurn(s, scoreTally(turn, s.checks), local)
@@ -267,8 +268,10 @@ export const register: Register = (on, options) => {
     if (r?.save.speechOn) {
       const save = r.save
       $.clock.after(0, async () => {
+        if (!(await read($, saveAtom))?.speechOn) return
         const line = await speak(clients($), model, save, facts, talk)
-        await update($, bubbleAtom, () => line)
+        // A /buddy quiet while the model answered wins: the line is dropped.
+        if ((await read($, saveAtom))?.speechOn) await update($, bubbleAtom, () => line)
       })
     }
     return result
@@ -281,24 +284,27 @@ export const register: Register = (on, options) => {
       const s = findSpecies(rest)
       return { text: s ? dexText(s, false) : `No Gen 1 Pokémon called "${rest}".` }
     }
-    const local = localTime(await $.clock.now(), offset)
+    const local = localTime(await $.clock.now())
     switch (sub) {
       case 'stats': {
         const s = await loadFresh($)
         if (s) await update($, saveAtom, () => s)
-        return s ? { text: statsText(s) } : blockedText()
+        return s ? { text: statsText(s, local.date) } : blockedText()
       }
       case 'dex': {
         const s = await loadFresh($)
         return s ? { text: dexText(species(s.species), true) } : blockedText()
       }
       case 'feed': {
+        if (!isInteractive) return { text: 'Feeding needs you at the terminal: a run with no one watching (-p, the SDK) earns nothing.' }
         const r = await mutate($, s => feed(s, local))
         if (!r) return blockedText()
         const name = species(r.save.species).name
         if (!r.fed) return { text: `${name} has already eaten today. Come back tomorrow.` }
         const days = r.save.counters.feedRun
-        return { text: `You fed ${name} a Rare Candy. +${r.gained} EXP. Streak: ${days} day${days === 1 ? '' : 's'}.` }
+        const streak = `Streak: ${days} day${days === 1 ? '' : 's'}.`
+        if (r.gained === 0) return { text: `You fed ${name} a Rare Candy. It is already at Lv 100, so it gains no EXP. ${streak}` }
+        return { text: `You fed ${name} a Rare Candy. +${r.gained} EXP. ${streak}` }
       }
       case 'use': {
         const stone = parseStone(rest)
@@ -326,7 +332,7 @@ export const register: Register = (on, options) => {
         return { text: r.save.speechOn ? 'Speech is on.' : 'Speech is off. No model calls are made: no reactions and no session judge.' }
       }
       case 'nickname': {
-        const nickname = rest.trim().slice(0, 12) || null
+        const nickname = [...rest.trim()].slice(0, NICKNAME_MAX).join('') || null
         const r = await mutate($, s => ({ save: { ...s, nickname } }))
         if (!r) return blockedText()
         return { text: nickname ? `Nickname set to ${nickname}.` : 'Nickname cleared.' }
@@ -376,6 +382,6 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey) return next(e)
     const view = await drawView($)
     if (!view) return next(e)
-    return band($.ui.resolve(e), view, e.props.maxRows, e.props.bodyColumns)
+    return band($.ui.resolve(e), view, e.props.maxRows, e.props.bodyColumns, e.viewport?.isFullscreen === true)
   })
 }
