@@ -1,9 +1,7 @@
-import { createHash } from 'node:crypto'
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { MANIFEST, RAW, sha256, type Manifest } from './sources.ts'
 
-const RAW = new URL('./raw/', import.meta.url)
-const MANIFEST = new URL('./sources.json', import.meta.url)
-// A commit of PokeAPI/sprites, so the sprites cannot change under a re-bake. Bump it deliberately, then run `npm run data -- --update`.
+// A commit of PokeAPI/sprites, so the sprites cannot change under a re-bake. Bump it deliberately, then run `npm run fetch -- --update`.
 const SPRITES_REF = '961f4fcc85b159f9c5fff356356dee1bf9069898'
 const SPRITES = `https://raw.githubusercontent.com/PokeAPI/sprites/${SPRITES_REF}/sprites/pokemon/versions/generation-ii/crystal/transparent`
 const ICONS = `https://raw.githubusercontent.com/PokeAPI/sprites/${SPRITES_REF}/sprites/pokemon/versions/generation-vii/icons`
@@ -11,9 +9,7 @@ const API = 'https://pokeapi.co/api/v2'
 
 const update = process.argv.includes('--update')
 const exists = (p: URL) => access(p).then(() => true, () => false)
-const sha256 = (b: Buffer) => createHash('sha256').update(b).digest('hex')
 
-type Manifest = { spritesRef: string; files: Record<string, string> }
 const known: Manifest = await readFile(MANIFEST, 'utf8').then(JSON.parse, () => ({ spritesRef: SPRITES_REF, files: {} }))
 if (!update && known.spritesRef !== SPRITES_REF) throw new Error('scripts/sources.json was made for another sprites commit; run with --update')
 const seen: Record<string, string> = {}

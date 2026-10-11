@@ -3,6 +3,7 @@ import { PNG } from 'pngjs'
 import { base64Encode } from '../plugin/hooks/codec.ts'
 import type { Growth, Species } from '../plugin/hooks/data/types.ts'
 import { evolutionsFrom, evolvesFromId, type ChainLink } from './gen1.ts'
+import { verifyRaw } from './sources.ts'
 import { cropAndIndex, cropOffset, iconShinyPalette, packNibbles, shinyPalette } from './pack.ts'
 
 const RAW = new URL('./raw/', import.meta.url)
@@ -14,6 +15,8 @@ const GROWTH: Record<string, Growth> = {
 }
 
 const clean = (s: string) => s.replace(/\u00ad[\n\f]?/g, '').replace(/[\f\n]+/g, ' ').replace(/\s+/g, ' ').trim()
+
+await verifyRaw()
 
 const out: Species[] = []
 for (let id = 1; id <= 151; id++) {

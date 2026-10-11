@@ -32,7 +32,7 @@ The Pokédex data, with the Gen 7 menu icons, is committed. The bake also downlo
 npm run data
 ```
 
-The sprites are fetched from a pinned commit of the sprites repository (`SPRITES_REF` in `scripts/fetch.ts`), and `scripts/sources.json` records that commit and the SHA-256 of every downloaded input. A fetch fails if a file differs from its recorded checksum, so a PokeAPI change cannot slip into the data unnoticed. After bumping the commit or accepting a changed PokeAPI answer, run `npm run fetch -- --update` to rewrite the checksums, then `npm run bake`, and commit both files with the regenerated module. The bake itself is deterministic.
+The sprites are fetched from a pinned commit of the sprites repository (`SPRITES_REF` in `scripts/fetch.ts`), and `scripts/sources.json` records that commit and the SHA-256 of every downloaded input. A fetch fails if a file differs from its recorded checksum, so a PokeAPI change cannot slip into the data unnoticed. After bumping the commit or accepting a changed PokeAPI answer, run `npm run fetch -- --update` to rewrite the checksums, then `npm run bake`, and commit both files with the regenerated module. The bake re-verifies `scripts/raw/` against the checksums before it writes anything, and it is otherwise deterministic.
 
 `npm run check:data` re-bakes and diffs the result, so it needs the raw files that `npm run data` downloads into `scripts/raw/`. The bake refuses to write a generated module over 1,000,000 bytes, because Claude Code does not load a module over 1 MiB.
 
