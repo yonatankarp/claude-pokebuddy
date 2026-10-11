@@ -32,8 +32,10 @@ The Pokédex data, with the Gen 7 menu icons, is committed. The bake also downlo
 npm run data
 ```
 
+The sprites are fetched from a pinned commit of the sprites repository (`SPRITES_REF` in `scripts/fetch.ts`), and `scripts/sources.json` records that commit and the SHA-256 of every downloaded input. A fetch fails if a file differs from its recorded checksum, so a PokeAPI change cannot slip into the data unnoticed. After bumping the commit or accepting a changed PokeAPI answer, run `npm run fetch -- --update` to rewrite the checksums, then `npm run bake`, and commit both files with the regenerated module. The bake re-verifies `scripts/raw/` against the checksums before it writes anything, and it is otherwise deterministic.
+
 `npm run check:data` re-bakes and diffs the result, so it needs the raw files that `npm run data` downloads into `scripts/raw/`. The bake refuses to write a generated module over 1,000,000 bytes, because Claude Code does not load a module over 1 MiB.
 
 ## CI
 
-CI runs the script tests, the scripts type check, `claude plugin validate --strict` on the plugin and the marketplace, and `claude plugin test plugin` on Claude Code 2.1.296. It then installs the plugin from the checkout into a throwaway config folder and fails if the install contains `package.json` or `node_modules`. A separate, non-required job runs the validation and tests on the latest Claude Code. It does not run `check:data` because the raw downloads are not in the repository.
+CI runs the script tests, the scripts type check (which includes the screenshot renderer), `claude plugin validate --strict` on the plugin and the marketplace, and `claude plugin test plugin` on Claude Code 2.1.296. It then installs the plugin from the checkout into a throwaway config folder and fails if the install contains `package.json` or `node_modules`. It also re-draws the screenshots and fails if `docs/images/` differs from the render code. A separate, non-required job runs the validation and tests on the latest Claude Code. CI does not run `check:data`, because that needs about 800 downloads from PokeAPI on every run; run it locally after touching the data pipeline.

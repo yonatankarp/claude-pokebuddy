@@ -27,6 +27,8 @@ jobs:
       - run: npm ci
       - run: npm run test:scripts
       - run: npx tsc -p tsconfig.scripts.json
+      - name: Screenshots match the render code
+        run: npm run screenshots && git diff --exit-code docs/images
       - name: Plugin ships the same LICENSE and NOTICE as the repository
         run: cmp LICENSE plugin/LICENSE && cmp NOTICE plugin/NOTICE
       - run: npm install -g @anthropic-ai/claude-code@2.1.296

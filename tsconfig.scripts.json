@@ -3,8 +3,8 @@
     "target": "es2023", "module": "esnext", "moduleResolution": "bundler",
     "strict": true, "noEmit": true, "skipLibCheck": true,
     "types": ["node"],
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "jsx": "react", "jsxFactory": "h", "jsxFragmentFactory": "Fragment"
   },
-  "include": ["scripts", "plugin/hooks/data/types.ts", "plugin/hooks/codec.ts"],
-  "exclude": ["scripts/screenshots.ts", "scripts/screenshots.spec.ts"]
+  "include": ["scripts", "plugin/hooks/data/types.ts", "plugin/hooks/codec.ts"]
 }
