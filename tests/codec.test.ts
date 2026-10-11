@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { base64Decode, base64Encode, fnv1a, fromUtf8, rleDecode, rleEncode, utf8 } from '../hooks/codec'
+import { base64Decode, base64Encode, fnv1a, fromUtf8, utf8 } from '../hooks/codec'
 
 describe('codec', () => {
   test('base64 round-trips every byte value', () => {
@@ -18,14 +18,5 @@ describe('codec', () => {
   test('fnv1a is stable and 8 hex chars', () => {
     expect(fnv1a('')).toBe('811c9dc5')
     expect(fnv1a('a')).toBe('e40c292c')
-  })
-  test('rle packs each run of up to 16 equal nibbles into one byte, count less one high', () => {
-    expect(Array.from(rleEncode([0, 0, 0, 5, 7, 7]))).toEqual([0x20, 0x05, 0x17])
-    expect(Array.from(rleEncode(new Array(17).fill(3)))).toEqual([0xf3, 0x03])
-    expect(Array.from(rleEncode([]))).toEqual([])
-  })
-  test('rle round-trips', () => {
-    const nibbles = Array.from({ length: 300 }, (_, i) => (i % 37 < 20 ? 0 : (i * 7) % 16))
-    expect(rleDecode(rleEncode(nibbles))).toEqual(nibbles)
   })
 })

@@ -7,7 +7,7 @@
     "bake": "tsx scripts/bake.ts",
     "data": "npm run fetch && npm run bake",
     "test:scripts": "node --import tsx --test scripts/*.spec.ts",
-    "check:data": "npm run bake && git diff --exit-code hooks/data/pokedex.generated.ts hooks/data/animation.generated.ts"
+    "check:data": "npm run bake && git diff --exit-code hooks/data/pokedex.generated.ts"
   },
   "devDependencies": {
     "@types/node": "22.10.2",

@@ -1,18 +1,15 @@
 import type { On } from 'claude-code'
 import { describe, expect, mock, test, type Engine } from 'claude-code/testing'
-import { countsAsPrompt, isPaneShown, shouldHandleTurn } from '../hooks/register'
-import { COMMAND, EVOLVE_MS, PANE_CHECK_MS, TICK_MS } from '../hooks/config'
+import { countsAsPrompt, shouldHandleTurn } from '../hooks/register'
+import { COMMAND, EVOLVE_MS } from '../hooks/config'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
 import { exportBlob, freshSave } from '../hooks/state'
-import { artSize } from '../hooks/render/sprite'
-import { PANE_TEXT_ROWS } from '../hooks/render/pane'
 
 const usage = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
 let toasts: string[] = []
 let modelCalls: string[] = []
 let modelReply = '42'
-let redraws = 0
 
 const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
 
@@ -24,7 +21,6 @@ const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stri
 function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
   const store = new Map<string, unknown>(Object.entries(entries).map(([k, v]) => [k, copy(v)]))
   toasts = []
-  redraws = 0
   modelCalls = []
   on('store.get', async (_$, e) => ({ value: copy(store.get(e.key)) }))
   on('store.set', async (_$, e) => { store.set(e.key, copy(e.value)); return { value: undefined } })
@@ -36,7 +32,7 @@ function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
   })
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('ui.toast', async (_$, e) => { toasts.push(e.text); return { value: undefined } })
-  on('ui.invalidate', async () => { redraws++; return { value: undefined } })
+  on('ui.invalidate', async () => ({ value: undefined }))
   return store
 }
 
@@ -486,28 +482,9 @@ describe('register', () => {
     props: { hasSurvey: false, isWorking: false, maxRows, bodyColumns: 195, scroll: { offset: 0, bodyRows: maxRows }, view: {} },
     viewport: { columns: 200, rows: 60 },
   })
-  const pika = (view: 'full' | 'compact' = 'full') => ({ ...freshSave([1, 2, 3, 4]), species: 25, exp: expForLevel(species(25).growth, 5), view })
+  const pika = () => ({ ...freshSave([1, 2, 3, 4]), species: 25, exp: expForLevel(species(25).growth, 5) })
 
-  for (const [name, view, maxRows, animates] of [
-    ['the band draws the animated sprite', 'full', 60, true],
-    ['the band falls back to the still icon', 'full', artSize(species(25), 'icon').rows + 1, false],
-    ['the band is compact', 'compact', 60, false],
-  ] as const) {
-    test(`redraws ${animates ? 'run' : 'stop'} while ${name}`, async ($, on) => {
-      world(on, { save: pika(view) })
-      const clock = mock.clock(on, { now: NOON })
-      await start($)
-      await $.command.run(run('stats'))
-      const ui = await band($, maxRows)
-      const before = redraws
-      await clock.advance(TICK_MS * 2 * 3 + 1)
-      if (animates) expect(redraws - before >= 3).toBe(true)
-      else expect(redraws - before).toBe(0)
-      await ui.unmount()
-    })
-  }
-
-  test('the bubble stays through a new turn, redraws and a session start, until the next speech line', async ($, on) => {
+  test('the bubble stays through a new turn, time passing and a session start, until the next speech line', async ($, on) => {
     world(on, { save: pika() })
     loop(on)
     const clock = mock.clock(on, { now: NOON })
@@ -537,154 +514,6 @@ describe('register', () => {
       modelReply = '42'
     }
   })
-
-  /**
-   * `mock.clock` whose `clock.every` answers are counted: one per period the mod's timer asks for.
-   * A second `clock.every` hook is refused, so the count wraps the kit's own.
-   */
-  function countingClock(on: On, now: number) {
-    const timer = { count: 0 }
-    const counting = ((name: string, ...rest: unknown[]) => {
-      if (name === 'clock.every') {
-        const answer = rest.pop() as (...a: unknown[]) => unknown
-        rest.push((...a: unknown[]) => { timer.count++; return answer(...a) })
-      }
-      return (on as (...a: unknown[]) => unknown)(name, ...rest)
-    }) as On
-    return { clock: mock.clock(counting, { now }), timer }
-  }
-
-  test('the compact view runs no timer at all', async ($, on) => {
-    world(on, { save: pika('compact') })
-    const { clock, timer } = countingClock(on, NOON)
-    await start($)
-    await $.command.run(run('stats'))
-    const ui = await band($)
-    await clock.advance(1000)
-    expect(timer.count).toBe(0)
-    expect(redraws).toBe(0)
-    await ui.unmount()
-  })
-
-  test('the timer starts when the band draws the sprite and stops when it falls back', async ($, on) => {
-    world(on, { save: pika() })
-    const { clock, timer } = countingClock(on, NOON)
-    await start($)
-    await $.command.run(run('stats'))
-    expect(timer.count).toBe(0)
-    const big = await band($)
-    await clock.advance(TICK_MS * 2 * 3 + 1)
-    expect(timer.count >= 3).toBe(true)
-    await big.unmount()
-    const small = await band($, artSize(species(25), 'icon').rows + 1)
-    await clock.advance(1)
-    const after = { periods: timer.count, redraws }
-    await clock.advance(1000)
-    expect(timer.count).toBe(after.periods)
-    expect(redraws).toBe(after.redraws)
-    await small.unmount()
-  })
-
-  test('a headless session runs no timer', async ($, on) => {
-    world(on, { save: pika() })
-    const { clock, timer } = countingClock(on, NOON)
-    await start($, false)
-    await $.command.run(run('stats'))
-    const ui = await band($)
-    await clock.advance(1000)
-    expect(timer.count).toBe(0)
-    await ui.unmount()
-  })
-
-  const shownPane = (isShown: boolean) => ({ id: 'pokebuddy', title: 'PIKACHU', isShown, isFocused: false, isPlaced: true })
-  test('isPaneShown wants the pokebuddy pane listed and shown', () => {
-    expect(isPaneShown([])).toBe(false)
-    expect(isPaneShown([shownPane(false)])).toBe(false)
-    expect(isPaneShown([{ ...shownPane(true), id: 'other' }])).toBe(false)
-    expect(isPaneShown([shownPane(true)])).toBe(true)
-  })
-
-  for (const [name, listed, keeps] of [
-    ['closed without a ui.close', [], false],
-    ['behind another tab', [shownPane(false)], false],
-    ['shown', [shownPane(true)], true],
-  ] as const) {
-    test(`the pane recheck ${keeps ? 'keeps' : 'stops'} redraws when the pane is ${name}`, async ($, on) => {
-      world(on, { save: pika('compact') })
-      on('ui.open', async () => ({ value: { isPlaced: true as const } }))
-      on('ui.panes', async () => ({ value: listed }))
-      const clock = mock.clock(on, { now: NOON })
-      await start($)
-      await $.command.run(run('pane'))
-      const ui = await $.ui.mount({
-        plugin: 'pokebuddy', surface: 'terminal', component: 'Pane', requestId: 'pokebuddy',
-        props: { title: 'PIKACHU', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
-        viewport: { columns: 200, rows: 50 },
-      })
-      await clock.advance(PANE_CHECK_MS + TICK_MS * 2 + 1)
-      const before = redraws
-      await clock.advance(1000)
-      if (keeps) expect(redraws - before >= 3).toBe(true)
-      else expect(redraws - before).toBe(0)
-      await ui.unmount()
-    })
-  }
-
-  test('a pane too small for the sprite draws the still icon and asks for no redraws', async ($, on) => {
-    world(on, { save: pika('compact') })
-    on('ui.open', async () => ({ value: { isPlaced: true as const } }))
-    const clock = mock.clock(on, { now: NOON })
-    await start($)
-    await $.command.run(run('pane'))
-    const icon = artSize(species(25), 'icon')
-    const ui = await $.ui.mount({
-      plugin: 'pokebuddy', surface: 'terminal', component: 'Pane', requestId: 'pokebuddy',
-      props: { title: 'PIKACHU', isFocused: false, bodyColumns: 60, placement: 'inline', scroll: { offset: 0, bodyRows: icon.rows + PANE_TEXT_ROWS }, view: {} },
-      viewport: { columns: 200, rows: 50 },
-    })
-    expect(await ui.find({ type: 'Text', text: /PIKACHU/ })).toBeDefined()
-    const before = redraws
-    await clock.advance(TICK_MS * 2 * 3 + 1)
-    expect(redraws - before).toBe(0)
-    await ui.unmount()
-  })
-
-  test('a session start that fires again keeps one redraw timer', async ($, on) => {
-    world(on, { save: pika() })
-    const clock = mock.clock(on, { now: NOON })
-    await start($)
-    await start($)
-    await $.command.run(run('stats'))
-    const ui = await band($)
-    const before = redraws
-    await clock.advance(TICK_MS * 2 * 4 + 1)
-    expect(redraws - before).toBe(4)
-    await ui.unmount()
-  })
-
-  for (const surface of ['terminal', 'desktop'] as const) {
-    test(`/buddy pane opens a pane that draws and animates on ${surface}`, async ($, on) => {
-      world(on, { save: { ...pika('compact'), nickname: 'Sparky' } })
-      const opened: { id: string; title?: string }[] = []
-      on('ui.open', async (_$, e) => { opened.push(e); return { value: { isPlaced: true as const } } })
-      const clock = mock.clock(on, { now: NOON })
-      await start($)
-      const r = await $.command.run(run('pane'))
-      expect(opened).toEqual([expect.objectContaining({ id: 'pokebuddy', title: 'Sparky' })])
-      expect(r.text).toMatch(/pane/)
-      const ui = await $.ui.mount({
-        plugin: 'pokebuddy', surface, component: 'Pane', requestId: 'pokebuddy',
-        props: { title: 'Sparky', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
-        viewport: { columns: 200, rows: 50 },
-      })
-      expect(await ui.find({ type: 'Text', text: /Sparky/ })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: /▀|▄/ })).toBeDefined()
-      const before = redraws
-      await clock.advance(TICK_MS * 2 * 3 + 1)
-      expect(redraws - before >= 3).toBe(true)
-      await ui.unmount()
-    })
-  }
 
   for (const surface of ['terminal', 'desktop'] as const) {
     test(`band draws compact on ${surface} and survives maxRows 1 and narrow width`, async ($, on) => {

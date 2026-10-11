@@ -1,4 +1,4 @@
-import { base64Decode, rleDecode } from '../codec'
+import { base64Decode } from '../codec'
 import { species } from '../data/dex'
 import type { PokemonType, Species, Sprite } from '../data/types'
 import { expForLevel, MAX_LEVEL } from '../exp'
@@ -6,26 +6,27 @@ import type { Save } from '../state'
 
 export type Run = { text: string; fg?: string; bg?: string }
 
-type Pixels = { w: number; h: number; indexes: readonly number[] }
-
 const decodeCache = new Map<string, number[]>()
-function cached(px: string, w: number, h: number, decode: (bytes: Uint8Array) => number[]): Pixels {
+function pixels({ px, w, h }: Sprite): number[] {
   let out = decodeCache.get(px)
   if (!out) {
-    out = decode(base64Decode(px))
+    out = Array.from(base64Decode(px)).flatMap(b => [b >> 4, b & 15])
     out.length = w * h
     decodeCache.set(px, out)
   }
-  return { w, h, indexes: out }
+  return out
 }
-const nibbles = (bytes: Uint8Array) => Array.from(bytes).flatMap(b => [b >> 4, b & 15])
 
 /** Terminal cells the art takes at 1:1: one column per pixel, two pixel rows per text row. */
 export function spriteSize(art: { w: number; h: number }) {
   return { rows: Math.ceil(art.h / 2), cols: art.w }
 }
 
-function rowsOf({ w, h, indexes }: Pixels, pal: readonly string[]): Run[][] {
+/** Half-block rows of a sprite: one column per pixel, two pixel rows per text row. */
+export function spriteRows(sprite: Sprite, isShiny: boolean): Run[][] {
+  const { w, h } = sprite
+  const indexes = pixels(sprite)
+  const pal = isShiny ? sprite.shiny : sprite.palette
   const at = (x: number, y: number): string => {
     if (y >= h) return ''
     const k = indexes[y * w + x] ?? 0
@@ -49,22 +50,11 @@ function rowsOf({ w, h, indexes }: Pixels, pal: readonly string[]): Run[][] {
   return rows
 }
 
-/** Half-block rows of a still sprite. */
-export function spriteRows(sprite: Sprite, isShiny: boolean): Run[][] {
-  return rowsOf(cached(sprite.px, sprite.w, sprite.h, nibbles), isShiny ? sprite.shiny : sprite.palette)
-}
-
-/** Half-block rows of one Crystal animation frame, in the sprite's palette. */
-export function frameRows(sp: Species, frame: number, isShiny: boolean): Run[][] {
-  const { w, h, px } = sp.frames
-  return rowsOf(cached(px[frame] ?? px[0]!, w, h, rleDecode), isShiny ? sp.sprite.shiny : sp.sprite.palette)
-}
-
-/** `sprite` is the animated Crystal sprite, `icon` the still menu icon. */
+/** `sprite` is the Crystal battle sprite, `icon` the smaller menu icon. */
 export type Art = 'sprite' | 'icon'
 
 export function artSize(sp: Species, art: Art) {
-  return spriteSize(art === 'sprite' ? sp.frames : sp.icon)
+  return spriteSize(art === 'sprite' ? sp.sprite : sp.icon)
 }
 
 /** The art that fits in `rows` x `columns`, never scaled: the Crystal sprite, else the menu icon, else none. */

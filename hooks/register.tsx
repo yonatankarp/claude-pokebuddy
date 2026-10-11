@@ -1,14 +1,12 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, PromptOrigin, Register, Timer, ToolCallResult, UiPane } from 'claude-code'
+import type { EngineInterface, PromptOrigin, Register, ToolCallResult } from 'claude-code'
 import { dexText, helpText, parseArgs, parseStone, statsText } from './commands'
-import { COMMAND, DENIED_MAX, EVOLVE_MS, FLASH_MS, PANE_CHECK_MS, PENDING_LOG_MAX, TICK_MS } from './config'
+import { COMMAND, DENIED_MAX, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
 import { findSpecies, species } from './data/dex'
 import { applyExp, applyTurn, cancelEvolution, feed, finishEvolution, useStone, type GameEvent } from './game'
 import { judge, lineFacts, lineSession, tagLine } from './judge'
 import { localTime, readOffset } from './localtime'
-import { band, bandArt, type BandView } from './render/band'
-import { pane, paneArt, PANE_TEXT_ROWS } from './render/pane'
-import { artSize } from './render/sprite'
+import { band, type BandView } from './render/band'
 import { signalsFromTool, type Outcome } from './signals'
 import { speak, turnFacts } from './speech'
 import { exportBlob, freshSave, importBlob, parseSave, type Save } from './state'
@@ -35,42 +33,6 @@ export function shouldHandleTurn(e: { agentId?: string; isAborted: boolean }): b
 /** Only the person's own typing earns prompt EXP: at the terminal or through the Remote Control bridge. */
 export function countsAsPrompt(e: { text: string; origin: PromptOrigin }): boolean {
   return (e.origin.kind === 'composer' || e.origin.kind === 'bridge') && !e.text.trimStart().startsWith('/')
-}
-
-/**
- * The redraw timer exists only while an animated view is up: the band drawing the Crystal sprite, or
- * the pane drawing it. Each render hook says what it drew; `syncRedraw` starts or stops the timer to match.
- * `isInteractive` stays true until a session.start says otherwise (a reload may not raise one).
- */
-const redraw = { isInteractive: true, isBandAnimated: false, isPaneAnimated: false, timer: null as Timer | null, ticks: 0 }
-const REDRAW_MS = TICK_MS * 2
-const PANE_CHECK_TICKS = Math.max(1, Math.round(PANE_CHECK_MS / REDRAW_MS))
-
-function syncRedraw($: EngineInterface) {
-  const isWanted = redraw.isInteractive && (redraw.isBandAnimated || redraw.isPaneAnimated)
-  if (isWanted && redraw.timer === null) {
-    redraw.ticks = 0
-    redraw.timer = $.clock.every(REDRAW_MS, () => redrawTick($))
-  } else if (!isWanted && redraw.timer !== null) {
-    redraw.timer.cancel()
-    redraw.timer = null
-  }
-}
-
-/** A pane hidden behind a tab, or gone without a ui.close, is not drawn, so its flag would stick: ask now and then. */
-async function redrawTick($: EngineInterface) {
-  redraw.ticks++
-  if (redraw.isPaneAnimated && redraw.ticks % PANE_CHECK_TICKS === 0) {
-    try { redraw.isPaneAnimated = isPaneShown(await $.ui.panes()) } catch {}
-    syncRedraw($)
-    if (redraw.timer === null) return
-  }
-  $.ui.invalidate('ui.render')
-}
-
-/** Whether the surface shows the pokebuddy pane: a hidden tab or a pane gone without a ui.close draws nothing. */
-export function isPaneShown(panes: readonly UiPane[]): boolean {
-  return panes.some(p => p.id === 'pokebuddy' && p.isShown)
 }
 
 /** Calls the permission check denied: they reach tool.call as errors, which are not failures. */
@@ -175,21 +137,12 @@ function clients($: EngineInterface) {
   }
 }
 
-/** What the band and the pane draw at this moment; null with no save to draw. */
+/** What the band draws at this moment; null with no save to draw. */
 async function drawView($: EngineInterface): Promise<BandView | null> {
   const save = await read($, saveAtom)
   if (!save) return null
-  const now = await $.clock.now()
-  const flashUntil = await read($, flashAtom)
-  const isFlash = flashUntil > now
-  return {
-    save,
-    bubble: await read($, bubbleAtom),
-    showFull: save.view === 'full' || isFlash,
-    evolving: save.evolution !== null,
-    now,
-    flashStart: isFlash ? flashUntil - FLASH_MS : null,
-  }
+  const isFlash = (await read($, flashAtom)) > (await $.clock.now())
+  return { save, bubble: await read($, bubbleAtom), showFull: save.view === 'full' || isFlash, evolving: save.evolution !== null }
 }
 
 export const register: Register = (on, options) => {
@@ -197,19 +150,17 @@ export const register: Register = (on, options) => {
   let tally: Tally = emptyTally()
   let lastWindow = -1
   let offset: number | null = null
+  // Until a session.start says otherwise (a reload may not raise one), assume a person is there.
+  let isInteractive = true
 
   on('session.start', async ($, e, next) => {
     blocked.isToasted = false
-    // A reload raises session.start again: drop any timer; the next animated draw starts one.
-    redraw.isInteractive = e.isInteractive
-    redraw.isBandAnimated = false
-    redraw.isPaneAnimated = false
-    syncRedraw($)
+    isInteractive = e.isInteractive
     await $.command.register({ name: 'buddy', description: 'Your Gen 1 Pokémon buddy: stats, dex, feed, evolve' })
     offset = await readOffset(clients($))
     // A reload or exit inside the evolution window drops its timer; finish it now.
     const loaded = await mutate($, s => (s.evolution ? finishEvolution(s) : { save: s }))
-    if (!redraw.isInteractive) return next(e)
+    if (!isInteractive) return next(e)
     // Take the finished sessions' lines first, then score them, so no other session judges them again.
     // This session's own lines stay for the session after it. Quiet means no model calls: they are dropped.
     const sid = await $.session.id()
@@ -261,7 +212,7 @@ export const register: Register = (on, options) => {
     const turn = e.isAborted ? withoutReds(tally) : tally
     tally = emptyTally()
     // A headless run (-p, the SDK) has no one watching: no EXP, no log line, no speech.
-    if (!redraw.isInteractive) return result
+    if (!isInteractive) return result
     const sid = await $.session.id()
     const local = localTime(await $.clock.now(), offset)
     const facts = turnFacts(turn.signals, turn.prompts)
@@ -323,15 +274,6 @@ export const register: Register = (on, options) => {
         const r = await mutate($, s => ({ save: { ...s, view: s.view === 'full' ? 'compact' as const : 'full' as const } }))
         return r ? { text: `Showing the ${r.save.view} view.` } : blockedText()
       }
-      case 'pane': {
-        const s = await loadFresh($)
-        if (!s) return blockedText()
-        await update($, saveAtom, () => s)
-        const name = s.nickname ?? species(s.species).name
-        const rows = artSize(species(s.species), 'sprite').rows + PANE_TEXT_ROWS
-        const opened = await $.ui.open({ id: 'pokebuddy', title: name, rows })
-        return { text: opened.isPlaced ? `${name} is in the pane.` : `${name}'s pane waits for room: ${opened.reason}` }
-      }
       case 'quiet': {
         const r = await mutate($, s => ({ save: { ...s, speechOn: !s.speechOn } }))
         if (!r) return blockedText()
@@ -386,28 +328,9 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const view = e.props.hasSurvey ? null : await drawView($)
-    redraw.isBandAnimated = view !== null && bandArt(view, e.props.maxRows, e.props.bodyColumns) === 'sprite'
-    syncRedraw($)
+    if (e.props.hasSurvey) return next(e)
+    const view = await drawView($)
     if (!view) return next(e)
     return band($.ui.resolve(e), view, e.props.maxRows, e.props.bodyColumns)
   })
-
-  on('ui.render', { component: 'Pane', requestId: 'pokebuddy' }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
-    const view = await drawView($)
-    const rows = e.props.scroll.bodyRows, columns = e.props.bodyColumns
-    redraw.isPaneAnimated = view !== null && paneArt(view, rows, columns) === 'sprite'
-    syncRedraw($)
-    if (!view) return <Box><Text dimColor>{blocked.reason ?? 'No Pokémon yet.'}</Text></Box>
-    return pane({ Box, Text }, view, rows, columns)
-  })
-
-  on('ui.close', async ($, e, next) => {
-    if (e.id === 'pokebuddy') {
-      redraw.isPaneAnimated = false
-      syncRedraw($)
-    }
-    return next(e)
-  }).catch(($, e, next) => next(e))
 }

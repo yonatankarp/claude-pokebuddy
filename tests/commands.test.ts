@@ -9,10 +9,6 @@ describe('commands', () => {
     expect(parseArgs('  use thunder stone ')).toEqual({ sub: 'use', rest: 'thunder stone' })
     expect(parseArgs('dex #25')).toEqual({ sub: 'dex', rest: '#25' })
     expect(parseArgs('dance')).toEqual({ sub: 'help', rest: 'dance' })
-    expect(parseArgs('pane')).toEqual({ sub: 'pane', rest: '' })
-  })
-  test('help lists the pane', () => {
-    expect(helpText('buddy')).toContain('/buddy pane: ')
   })
   test('help says reset needs confirm', () => {
     expect(helpText('buddy')).toContain('/buddy reset confirm')

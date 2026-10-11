@@ -5,7 +5,7 @@ import { expForLevel, MAX_LEVEL } from './exp'
 import type { Save } from './state'
 import type { Source } from './tally'
 
-const SUBS = ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'pane', 'quiet', 'nickname', 'export', 'import', 'restore', 'reset'] as const
+const SUBS = ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'quiet', 'nickname', 'export', 'import', 'restore', 'reset'] as const
 export type Parsed = { sub: (typeof SUBS)[number] | 'help'; rest: string }
 
 export function parseArgs(args: string): Parsed {
@@ -66,7 +66,6 @@ export function helpText(command: string): string {
     `/${command} use <stone>: evolve with a stone`,
     `/${command} stop: cancel an evolution in progress`,
     `/${command} toggle: compact or full sprite`,
-    `/${command} pane: watch your Pokémon, animated, in a side pane`,
     `/${command} quiet: speech and the session judge on or off`,
     `/${command} nickname <name>: set a nickname (empty to clear)`,
     `/${command} export: copy your save to the clipboard`,

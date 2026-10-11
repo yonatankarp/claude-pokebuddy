@@ -4,7 +4,6 @@ import { band, bandArt, type BandElements, type BandView } from '../hooks/render
 import { species } from '../hooks/data/dex'
 import { freshSave } from '../hooks/state'
 import { artSize } from '../hooks/render/sprite'
-import { IDLE_REST_MS, TICK_MS } from '../hooks/config'
 
 type Fake = { children?: unknown } & Record<string, unknown>
 const make = (type: 'Box' | 'Text') => ({ children, ...props }: Fake): RenderElement => ({
@@ -34,7 +33,7 @@ function height(n: unknown): number {
 const bubbleBox = (n: unknown) => all(n).find(x => x.props?.borderStyle === 'round')
 
 const save = freshSave([1, 2, 3, 4])
-const view = (over: Partial<BandView> = {}): BandView => ({ save, bubble: 'hello there', showFull: true, evolving: false, now: 0, flashStart: null, ...over })
+const view = (over: Partial<BandView> = {}): BandView => ({ save, bubble: 'hello there', showFull: true, evolving: false, ...over })
 
 describe('band', () => {
   test('maxRows 1 draws the single line without a sprite', () => {
@@ -59,22 +58,6 @@ describe('band', () => {
     expect(bandArt(view(), sprite.rows + 1, narrow)).toBe('sprite')
     expect(height(band(els, view(), sprite.rows + 1, narrow))).toBe(sprite.rows + 1)
     expect(bandArt(view(), icon.rows, icon.cols + 29)).toBe(null)
-  })
-  test('the sprite animates between two clock times; the icon and the compact line stay still', () => {
-    const pika = { ...save, species: 25 }
-    const sp = species(25)
-    // Pikachu's idle opens on frame 0 for one step, then frame 5.
-    const cycle = sp.anim.idle.reduce((ms, s) => ms + s.ticks * TICK_MS, 0) + IDLE_REST_MS
-    const t0 = 40 * cycle + 2, t1 = 40 * cycle + (sp.anim.idle[0]!.ticks + 1) * TICK_MS
-    const draw = (now: number, maxRows: number, showFull = true) => band(els, view({ save: pika, now, showFull }), maxRows, 200)
-    const sprite = artSize(sp, 'sprite').rows + 1, icon = artSize(sp, 'icon').rows + 1
-    expect(bandArt(view({ save: pika }), sprite, 200)).toBe('sprite')
-    expect(texts(draw(t1, sprite))).not.toBe(texts(draw(t0, sprite)))
-    expect((draw(t1, sprite) as { children?: unknown[] }).children!.length).toBe((draw(t0, sprite) as { children?: unknown[] }).children!.length)
-    expect(bandArt(view({ save: pika }), icon, 200)).toBe('icon')
-    expect(texts(draw(t1, icon))).toBe(texts(draw(t0, icon)))
-    expect(bandArt(view({ save: pika, showFull: false }), sprite, 200)).toBe(null)
-    expect(texts(draw(t1, sprite, false))).toBe(texts(draw(t0, sprite, false)))
   })
   test('evolving shows the old species name', () => {
     const out = texts(band(els, view({ evolving: true, showFull: false }), 1, 120))
@@ -132,7 +115,7 @@ describe('band', () => {
       }
     }
   })
-  test('the bubble shows in every layout: compact, beside the sprite, under it, beside the icon, the line alone, a flash', () => {
+  test('the bubble shows in every layout: compact, beside the sprite, under it, beside the icon, the line alone, evolving', () => {
     const icon = artSize(species(save.species), 'icon')
     const layouts: [Partial<BandView>, number, number][] = [
       [{ showFull: false }, 1, 120],
@@ -140,7 +123,7 @@ describe('band', () => {
       [{}, 60, spriteCols + 29],
       [{}, icon.rows + 1, 120],
       [{}, 2, 120],
-      [{ evolving: true, flashStart: 0, now: 10 }, 60, 120],
+      [{ evolving: true }, 60, 120],
     ]
     for (const [over, maxRows, columns] of layouts) expect(texts(band(els, view(over), maxRows, columns))).toContain('hello there')
     expect(bandArt(view(), icon.rows + 1, 120)).toBe('icon')

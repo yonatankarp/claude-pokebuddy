@@ -2,12 +2,11 @@ import type { Elements } from 'claude-code'
 import { COMPACT_MIN_COLUMNS } from '../config'
 import { species } from '../data/dex'
 import type { Save } from '../state'
-import { frameAt } from './anim'
 import type { Species } from '../data/types'
-import { artSize, expBar, fitArt, frameRows, spriteRows, TYPE_COLOR, type Art, type Run } from './sprite'
+import { artSize, expBar, fitArt, spriteRows, TYPE_COLOR, type Art, type Run } from './sprite'
 
-/** `now` picks the animation frame; `flashStart`, set while a level-up or evolution flash runs, plays the intro. */
-export type BandView = { save: Save; bubble: string | null; showFull: boolean; evolving: boolean; now: number; flashStart: number | null }
+/** `showFull` is the full view, by choice or for a level-up or evolution flash. */
+export type BandView = { save: Save; bubble: string | null; showFull: boolean; evolving: boolean }
 
 export type BandElements = Pick<Elements['terminal'], 'Box' | 'Text'>
 
@@ -75,16 +74,15 @@ export function bandLayout(view: BandView, maxRows: number, columns: number): La
   return null
 }
 
-/** The art the band draws: only the Crystal sprite animates; null is the line alone. */
+/** The art the band draws: the Crystal sprite, else the icon; null is the line alone. */
 export function bandArt(view: BandView, maxRows: number, columns: number): Art | null {
   return bandLayout(view, maxRows, columns)?.art ?? null
 }
 
-/** The rows of `art` as drawn at `view.now`: the sprite's current animation frame, or the still icon. */
+/** The rows of `art` in the buddy's palette, shiny or not. */
 export function artRows(view: BandView, art: Art): Run[][] {
   const sp = species(view.save.species)
-  if (art === 'icon') return spriteRows(sp.icon, view.save.isShiny)
-  return frameRows(sp, frameAt(sp.anim, sp.frames.px.length, view.now, view.flashStart), view.save.isShiny)
+  return spriteRows(art === 'icon' ? sp.icon : sp.sprite, view.save.isShiny)
 }
 
 export function drawRows({ Box, Text }: BandElements, rows: Run[][]) {

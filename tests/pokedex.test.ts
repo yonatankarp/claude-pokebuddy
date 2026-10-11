@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { base64Decode, rleDecode } from '../hooks/codec'
-import { findSpecies, POKEDEX } from '../hooks/data/dex'
+import { findSpecies } from '../hooks/data/dex'
+import { POKEDEX } from '../hooks/data/pokedex.generated'
 
 describe('generated pokedex', () => {
   test('151 species in id order', () => {
@@ -28,33 +28,6 @@ describe('generated pokedex', () => {
       expect(s.icon.shiny.length).toBe(s.icon.palette.length)
       expect(s.icon.h <= 30).toBe(true)
     }
-  })
-  test('every species has Crystal frames of one size, frame 0 the sprite in the same palette', () => {
-    for (const s of POKEDEX) {
-      expect(s.frames.px.length >= 1).toBe(true)
-      for (const px of s.frames.px) {
-        const indexes = rleDecode(base64Decode(px))
-        expect(indexes.length).toBe(s.frames.w * s.frames.h)
-        expect(indexes.every(k => k < s.sprite.palette.length)).toBe(true)
-      }
-      const f0 = rleDecode(base64Decode(s.frames.px[0]!))
-      const opaque = f0.filter(k => k !== 0).length
-      const sprite = Array.from(base64Decode(s.sprite.px)).flatMap(b => [b >> 4, b & 15]).slice(0, s.sprite.w * s.sprite.h)
-      expect(opaque).toBe(sprite.filter(k => k !== 0).length)
-    }
-  })
-  test('every animation step shows a frame that exists, for at least one tick', () => {
-    for (const s of POKEDEX) {
-      expect(s.anim.idle.length >= 1).toBe(true)
-      for (const step of [...s.anim.intro, ...s.anim.idle]) {
-        expect(step.frame < s.frames.px.length).toBe(true)
-        expect(step.ticks >= 1).toBe(true)
-      }
-    }
-  })
-  test('Pikachu\'s idle unrolls pokecrystal\'s anim_idle.asm', () => {
-    expect(POKEDEX[24]!.anim.idle.map(s => s.frame)).toEqual([0, 5, 0, 5, 0, 5, 0, 4, 0, 4])
-    expect(POKEDEX[24]!.anim.idle.every(s => s.ticks === 5)).toBe(true)
   })
   test('dex text has no soft hyphens and keeps words whole', () => {
     for (const s of POKEDEX) expect(s.dex.includes('\u00ad')).toBe(false)

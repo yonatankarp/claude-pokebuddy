@@ -28,7 +28,6 @@ The command is `/buddy`. In some contexts Claude Code shows it namespaced as `/p
 | `/buddy use <stone>` | Evolve with a stone |
 | `/buddy stop` | Cancel an evolution in progress |
 | `/buddy toggle` | Full view or compact line |
-| `/buddy pane` | Open a pane that shows your Pokémon animated |
 | `/buddy quiet` | Speech and the session judge on or off |
 | `/buddy nickname <name>` | Set a nickname (empty to clear) |
 | `/buddy export` | Copy your save to the clipboard |
@@ -39,9 +38,7 @@ The command is `/buddy`. In some contexts Claude Code shows it namespaced as `/p
 
 The full view, the default, draws the Crystal sprite when the band has room, and the smaller Gen 7 menu icon when it does not. Beside the art, the latest speech line sits in a rounded bubble, wrapped to at most 40 columns, with the name, level and EXP bar under it. When the band is too narrow for the bubble beside the art, the summary line goes under the art with the speech at its end, and when the band is too short for the whole line, the bubble keeps its first rows and ends in an ellipsis. The compact view is the summary line alone, speech included on terminals of about 60 columns and wider. A speech line stays until the next one replaces it or `/buddy quiet` turns speech off.
 
-The Crystal sprite moves with its own animation from Pokémon Crystal: the idle animation plays, the Pokémon rests for a moment, and it plays again. A level-up or an evolution plays the intro animation first, the one the game shows when the Pokémon appears. The icon has no frames of its own, so the icon view and the compact line stay still, and nothing redraws while they show.
-
-`/buddy pane` opens a pane, beside the conversation in fullscreen and above the prompt otherwise, with the animated sprite, its name, level, EXP bar and latest speech bubble, the bubble beside the sprite when the pane is wide enough. A pane too small for the sprite shows the still icon. Close it as any pane, from its close mark or with ctrl+x x.
+A level-up or an evolution shows the full view for a few seconds, even in the compact view.
 
 Saves live in the plugin's store, one per machine. `export` and `import` move a save between machines. The blob carries a 32-bit checksum that catches damage, not tampering. One backup slot, `save.bak`, keeps the previous save on `import`, `restore` and `reset`. A reset needs `/buddy reset confirm` and works once per local day, so a stray command cannot throw your Pokémon away or reroll for a shiny. If the save cannot be read, nothing is rerolled: it is copied to `save.bak` (unless that already holds a readable save), the buddy goes read-only and a notice says to run `/buddy restore` or `/buddy reset confirm`, which is then always allowed.
 
@@ -87,7 +84,7 @@ Speech uses one Haiku call per completed main turn, plus one at session start th
 
 ## Building the data
 
-The Pokédex data, with the Crystal sprites, the Crystal animation frames and the Gen 7 menu icons, is committed. To regenerate it from PokeAPI, the PokeAPI sprites repository and the pret/pokecrystal disassembly:
+The Pokédex data, with the Crystal sprites and the Gen 7 menu icons, is committed. To regenerate it from PokeAPI and the PokeAPI sprites repository:
 
 ```
 npm ci && npm run data
@@ -102,5 +99,3 @@ CI runs the script tests, the scripts type check, `claude plugin validate .` and
 ## Disclaimer
 
 Pokémon names, sprites and Pokédex text are trademarks and copyrights of Nintendo, Game Freak and The Pokémon Company. They are not covered by this licence. This is an unofficial fan project.
-
-Animations and frames from the pret/pokecrystal disassembly.
