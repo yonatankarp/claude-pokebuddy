@@ -1,37 +1,15 @@
+import type { Save } from '../types'
 import { base64Decode, base64Encode, fnv1a, fromUtf8, utf8 } from './codec'
 import { PENDING_LOG_MAX } from './config'
-import { STONES, type Stone } from './data/types'
-import type { Counters } from './evolution'
+import { STONES } from './data/types'
 import { expForLevel } from './exp'
 import { species } from './data/dex'
-import { PERSONALITIES, rollFrom, type Personality } from './roll'
-import type { Source } from './tally'
+import { PERSONALITIES, rollFrom } from './roll'
 
 export const SAVE_VERSION = 1
 export const START_LEVEL = 5
 
-export type Save = {
-  version: 1
-  seed: number[]
-  species: number
-  isShiny: boolean
-  personality: Personality
-  nickname: string | null
-  level: number
-  exp: number
-  lifetimeExp: number
-  expBySource: Partial<Record<Source, number>>
-  bag: Partial<Record<Stone, number>>
-  counters: Counters
-  checks: Record<string, boolean>
-  lastMoonDate: string | null
-  feed: { lastDate: string | null }
-  pendingLog: string[]
-  speechOn: boolean
-  view: 'compact' | 'full'
-  evolution: { to: number } | null
-  cancelledAtLevel: number | null
-}
+export type { Save }
 
 export function freshSave(seed: number[]): Save {
   const roll = rollFrom(seed)

@@ -6,7 +6,7 @@ export type LocalTime = { date: string; hour: number }
 const pad = (n: number) => String(n).padStart(2, '0')
 
 /** Minutes east of UTC, or null to use the sandbox's own local time. */
-export async function readOffset($: EngineInterface): Promise<number | null> {
+export async function readOffset($: { process: Pick<EngineInterface['process'], 'run'> }): Promise<number | null> {
   if (LOCALTIME_MODE !== 'process') return null
   try {
     const z = (await $.process.run(['date', '+%z'])).stdout.trim()
