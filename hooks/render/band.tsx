@@ -1,5 +1,4 @@
 import type { Elements } from 'claude-code'
-import { COMPACT_MIN_COLUMNS } from '../config'
 import { species } from '../data/dex'
 import type { Save } from '../state'
 import type { Species } from '../data/types'
@@ -20,6 +19,8 @@ const BUBBLE_MAX = 40
 const SIDE_EXTRA = 6
 // The bubble's border and padding, left and right.
 const BUBBLE_FRAME = 4
+// Less room than this on the line drops the inline bubble rather than show a stub of it.
+const INLINE_MIN = 12
 
 /** Words wrapped to `width`; a word longer than that is broken. */
 export function wrapText(text: string, width: number): string[] {
@@ -114,14 +115,19 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
   const sp = species(save.species)
   const name = save.nickname ?? sp.name
   const typeColor = TYPE_COLOR[sp.types[0]!]
+  const title = view.evolving ? `What? ${sp.name} is evolving!` : name
+  const level = ` Lv${save.level} `
+  const room = columns - (2 + title.length + (save.isShiny ? 2 : 0) + level.length + 8)
+  const said = view.bubble ? ` │ “${view.bubble}”` : ''
+  const inline = room < INLINE_MIN || !said ? null : said.length <= room ? said : said.slice(0, room - 1) + '…'
   const line = (isBubbleInline: boolean) => (
     <Box key="line" flexDirection="row">
       <Text color={typeColor} wrap="truncate-end">◓ </Text>
-      <Text bold wrap="truncate-end">{view.evolving ? `What? ${sp.name} is evolving!` : name}</Text>
+      <Text bold wrap="truncate-end">{title}</Text>
       {save.isShiny && <Text color="#f8d030" wrap="truncate-end"> ★</Text>}
-      <Text wrap="truncate-end"> Lv{save.level} </Text>
+      <Text wrap="truncate-end">{level}</Text>
       <Text color={typeColor} wrap="truncate-end">{expBar(save, 8)}</Text>
-      {isBubbleInline && view.bubble && columns >= COMPACT_MIN_COLUMNS && <Text dimColor wrap="truncate-end"> │ “{view.bubble}”</Text>}
+      {isBubbleInline && inline && <Text dimColor wrap="truncate-end">{inline}</Text>}
     </Box>
   )
   const layout = bandLayout(view, maxRows, columns)

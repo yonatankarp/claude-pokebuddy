@@ -203,6 +203,13 @@ describe('register', () => {
     expect((await $.command.run(run('reset confirm'))).text).toMatch(/once a day/)
   })
 
+  test('a reset date after today (a clock moved back) blocks today\'s reset too', async ($, on) => {
+    world(on, { save: { ...freshSave([1, 2, 3, 4]), lastResetDate: '2999-01-01' } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('reset confirm'))).text).toMatch(/once a day/)
+  })
+
   test('reset confirm is always allowed over a corrupt save', async ($, on) => {
     const store = world(on, { save: { ...freshSave([1, 2, 3, 4]), lastResetDate: 'not a date' } })
     mock.clock(on, { now: NOON })

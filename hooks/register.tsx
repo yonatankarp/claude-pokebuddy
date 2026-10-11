@@ -323,7 +323,7 @@ export const register: Register = (on, options) => {
           const what = cur.kind === 'ok' ? `${cur.save.nickname ?? species(cur.save.species).name} (Lv ${cur.save.level})` : 'the current save'
           return { text: `This rolls a new Pokémon at Lv 5 and moves ${what} to save.bak. It works once a day. Run /buddy reset confirm to go ahead.` }
         }
-        if (cur.kind === 'ok' && cur.save.lastResetDate === local.date) {
+        if (cur.kind === 'ok' && cur.save.lastResetDate !== null && cur.save.lastResetDate >= local.date) {
           return { text: 'You already reset today. Reset works once a day; nothing was changed.' }
         }
         const kept = await backUp($, raw)

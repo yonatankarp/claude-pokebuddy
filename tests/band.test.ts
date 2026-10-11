@@ -42,9 +42,14 @@ describe('band', () => {
     expect(texts(out)).not.toContain('▀')
     expect(texts(out)).not.toContain('▄')
   })
-  test('bubble hidden below the compact width, shown above it', () => {
-    expect(texts(band(els, view({ showFull: false }), 1, 40))).not.toContain('hello there')
-    expect(texts(band(els, view({ showFull: false }), 1, 120))).toContain('hello there')
+  test('the inline bubble is cut to the room left on the line, and dropped under 12 columns of room', () => {
+    const chatty = view({ showFull: false, bubble: 'a line of speech too long for forty columns' })
+    const at40 = texts(band(els, chatty, 1, 40))
+    expect(at40).toContain('│ “a line')
+    expect(at40).toMatch(/…$/)
+    expect(at40.length <= 40).toBe(true)
+    expect(texts(band(els, view({ showFull: false }), 1, 120))).toContain('“hello there”')
+    expect(texts(band(els, chatty, 1, 30))).not.toContain('│')
   })
   test('showFull with room draws sprite rows above the line', () => {
     expect(texts(band(els, view(), 100, 200))).toMatch(/[▀▄]/)

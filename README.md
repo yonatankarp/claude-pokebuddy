@@ -56,7 +56,7 @@ In some places Claude Code shows the command as `/pokebuddy:buddy`.
 
 A check is a test, build, lint or type check run such as `npm test`, `./gradlew build`, `pytest` or `go vet ./...`. Runs without a person at the prompt (`claude -p`, the Agent SDK) earn nothing.
 
-Each species levels at its Gen 1 growth rate, up to level 100. Level evolutions follow the original games: when your Pokémon reaches the level, the band announces it and you have about 4 seconds to type `/buddy stop` if you would rather it stayed as it is. The next level-up tries again.
+Each species levels at its Gen 1 growth rate, up to level 100. Level evolutions follow the original games: when your Pokémon reaches the level, the buddy above your prompt announces it and you have about 4 seconds to type `/buddy stop` if you would rather it stayed as it is. The next level-up tries again.
 
 Stones collect in your bag as you reach milestones, and every milestone repeats.
 
@@ -81,9 +81,9 @@ Change these in `/config`, or under `pluginConfigs.pokebuddy` in your Claude Cod
 
 ## Cost and privacy
 
-Your buddy makes one small model call when a turn finishes, and one when a session starts to judge the sessions that ended since the last one.
+In an interactive session with speech on, your buddy makes at most one small model call per completed turn, and at most one more when a session starts, only if earlier sessions are waiting to be judged.
 
-With `speechContext` set to `conversation`, the turn's call includes the first 300 characters of your last prompt and the first 300 characters of Claude's answer, along with a short summary of what happened. With `facts`, only the summary is sent: counts of prompts and tool calls, which checks passed or failed, and the names of config files you edited. The session judge always gets the summary alone. Prompt and answer text are never saved.
+With `speechContext` set to `conversation`, the turn's call includes the first 300 characters of your last prompt and the first 300 characters of Claude's answer, along with a short summary of what happened. With `facts`, only the summary is sent: counts of prompts and tool calls, the check commands you ran (for example `npm test`) and whether they passed, and the names of config files you edited. The session judge always gets the summary alone. Prompt and answer text are never saved.
 
 `/buddy quiet` stops every model call: no speech and no session judge.
 
