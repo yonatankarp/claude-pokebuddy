@@ -1,13 +1,14 @@
 {
   "name": "pokebuddy-build",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "fetch": "tsx scripts/fetch.ts",
     "bake": "tsx scripts/bake.ts",
     "data": "npm run fetch && npm run bake",
     "test:scripts": "node --import tsx --test scripts/*.spec.ts",
-    "check:data": "npm run bake && git diff --exit-code hooks/data/pokedex.generated.ts",
+    "check:data": "npm run bake && git diff --exit-code plugin/hooks/data/pokedex.generated.ts",
     "screenshots": "tsx scripts/screenshots.ts"
   },
   "devDependencies": {

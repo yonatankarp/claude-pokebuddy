@@ -4,7 +4,7 @@ The plugin is `pokebuddy` and its command is `/buddy`.
 
 ## Layout
 
-`hooks/` holds the mod: `register.tsx` wires the hooks, the game rules, save handling and speech sit in their own modules beside it, and `hooks/render/` draws the band. `hooks/data/pokedex.generated.ts` is the baked Pokédex. `types/index.d.ts` is the contract the mod ships, including the `Save` type. `tests/` runs in Claude Code's plugin test kit, and `scripts/` holds the data pipeline and the screenshot renderer with their own Node tests.
+The shipped plugin lives in `plugin/`, and the marketplace in `.claude-plugin/marketplace.json` points at it; everything else in the repository is the build workspace and never reaches an install. `plugin/hooks/` holds the mod: `register.tsx` wires the hooks, the game rules, save handling and speech sit in their own modules beside it, and `plugin/hooks/render/` draws the band. `plugin/hooks/data/pokedex.generated.ts` is the baked Pokédex. `plugin/types/index.d.ts` is the contract the mod ships, including the `Save` type. `plugin/tests/` runs in Claude Code's plugin test kit (it has to sit beside the hooks module), and `scripts/` holds the data pipeline and the screenshot renderer with their own Node tests. `plugin/LICENSE` and `plugin/NOTICE` are copies of the root files, and CI checks that they match.
 
 ## Running the checks
 
@@ -13,15 +13,16 @@ npm ci
 npm run test:scripts
 npx tsc -p tsconfig.scripts.json
 npx tsc -p .
-claude plugin validate .
-claude plugin test .
+claude plugin validate --strict plugin
+claude plugin validate --strict .
+claude plugin test plugin
 ```
 
-To try your changes in a session, start Claude Code with `--plugin-dir .` from the repository.
+To try your changes in a session, start Claude Code with `--plugin-dir plugin` from the repository.
 
 ## Screenshots
 
-The images in `docs/images/` are drawn by the band's own code: `npm run screenshots` lays out the band for a few fixed saves the way the terminal would and writes them as SVG. Run it after changing `hooks/render/` and commit the result.
+The images in `docs/images/` are drawn by the band's own code: `npm run screenshots` lays out the band for a few fixed saves the way the terminal would and writes them as SVG. Run it after changing `plugin/hooks/render/` and commit the result.
 
 ## Building the data
 
@@ -35,4 +36,4 @@ npm run data
 
 ## CI
 
-CI runs the script tests, the scripts type check, `claude plugin validate .` and `claude plugin test .` on Claude Code 2.1.296. It does not run `check:data` because the raw downloads are not in the repository.
+CI runs the script tests, the scripts type check, `claude plugin validate --strict` on the plugin and the marketplace, and `claude plugin test plugin` on Claude Code 2.1.296. It then installs the plugin from the checkout into a throwaway config folder and fails if the install contains `package.json` or `node_modules`. A separate, non-required job runs the validation and tests on the latest Claude Code. It does not run `check:data` because the raw downloads are not in the repository.

@@ -1,4 +1,4 @@
 node_modules/
 scripts/raw/
-.claude-plugin/types/
+**/.claude-plugin/types/
 .superpowers/

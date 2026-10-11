@@ -3,23 +3,64 @@ on:
   push:
     branches: [main]
   pull_request:
-permissions:
-  contents: read
+  # Dependabot auto-merges with GITHUB_TOKEN, which triggers no push run, so main is re-checked weekly and on demand.
+  schedule:
+    - cron: '17 5 * * 2'
+  workflow_dispatch:
+permissions: {}
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run test:scripts
       - run: npx tsc -p tsconfig.scripts.json
+      - name: Plugin ships the same LICENSE and NOTICE as the repository
+        run: cmp LICENSE plugin/LICENSE && cmp NOTICE plugin/NOTICE
       - run: npm install -g @anthropic-ai/claude-code@2.1.296
-      - run: claude plugin validate .
-      - run: claude plugin test .
+      - run: claude plugin validate --strict plugin
+      - run: claude plugin validate --strict .
+      - run: claude plugin test plugin
+      - name: Installed plugin carries no build workspace
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-config
+        run: |
+          claude plugin marketplace add "$GITHUB_WORKSPACE"
+          claude plugin install pokebuddy@pokebuddy
+          cache="$CLAUDE_CONFIG_DIR/plugins/cache/pokebuddy/pokebuddy"
+          test -f "$cache"/*/hooks/hooks.json
+          if find "$cache" \( -name package.json -o -name package-lock.json -o -name node_modules \) | grep .; then
+            echo "the installed plugin contains build files" >&2
+            exit 1
+          fi
+          du -sh "$cache"
+
+  check-latest:
+    # Not a required check: an early warning when the newest Claude Code changes the plugin API.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: npm install -g @anthropic-ai/claude-code@latest
+      - run: claude --version
+      - run: claude plugin validate --strict plugin
+      - run: claude plugin test plugin
