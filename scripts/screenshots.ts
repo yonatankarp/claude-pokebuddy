@@ -2,18 +2,19 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { band, type BandElements, type BandView } from '../plugin/hooks/render/band.tsx'
+import { panel, type PanelElements, type PanelView } from '../plugin/hooks/render/panel.tsx'
 import { species } from '../plugin/hooks/data/dex.ts'
 import { expForLevel } from '../plugin/hooks/exp.ts'
 import { freshSave, parseSave, type Save } from '../plugin/hooks/state.ts'
 
-type Node = { type: 'Box' | 'Text'; props: Record<string, unknown>; children: (Node | string)[] }
+type Node = { type: 'Box' | 'Text' | 'Button'; props: Record<string, unknown>; children: (Node | string)[] }
 type Cell = { ch: string; fg?: string; bg?: string; bold?: boolean; dim?: boolean }
 type Grid = { w: number; rows: Cell[][] }
 
 const flat = (children: unknown): (Node | string)[] =>
   [children].flat(Infinity).filter((c): c is Node | string => typeof c === 'string' || (typeof c === 'object' && c !== null))
 const make = (type: Node['type']) => ({ children, ...props }: { children?: unknown }): Node => ({ type, props, children: flat(children) })
-const els = { Box: make('Box'), Text: make('Text') } as unknown as BandElements
+const els = { Box: make('Box'), Text: make('Text'), Button: make('Button') } as unknown as BandElements & PanelElements
 
 // band.tsx is compiled with `h` as its JSX factory; outside Claude Code the components are the fakes above.
 ;(globalThis as Record<string, unknown>).h = (type: (p: object) => Node, props: object | null, ...children: unknown[]) =>
@@ -29,6 +30,12 @@ function layout(node: Node | string, style: Omit<Cell, 'ch'> = {}): Grid {
     return { w: row.length, rows: [row] }
   }
   const p = node.props
+  // The terminal draws a Button as `[ label ]`, the primary one bold, and a plain one as `key: label` or the label.
+  if (node.type === 'Button') {
+    const label = p.label !== undefined ? [String(p.label)] : node.children
+    const children = p.plain ? [...(p.hotkey ? [`${String(p.hotkey)}: `] : []), ...label] : ['[ ', ...label, ' ]']
+    return layout({ type: 'Text', props: { bold: p.variant === 'primary', dimColor: p.dimColor === true }, children }, style)
+  }
   if (node.type === 'Text') {
     const own = {
       ...style,
@@ -66,6 +73,10 @@ function layout(node: Node | string, style: Omit<Cell, 'ch'> = {}): Grid {
   }
   const ml = (p.marginLeft as number | undefined) ?? 0
   if (ml) grid = { w: grid.w + ml, rows: grid.rows.map(r => [...Array.from({ length: ml }, blank), ...r]) }
+  const mr = (p.marginRight as number | undefined) ?? 0
+  if (mr) grid = { w: grid.w + mr, rows: grid.rows.map(r => [...pad(r, grid.w), ...Array.from({ length: mr }, blank)]) }
+  const mt = (p.marginTop as number | undefined) ?? 0
+  if (mt) grid = { w: grid.w, rows: [...Array.from({ length: mt }, () => [] as Cell[]), ...grid.rows] }
   return grid
 }
 
@@ -146,6 +157,14 @@ export function renderScene(view: BandView, maxRows: number, columns: number): s
   return toSvg([...rows, [], prompt])
 }
 
+/** The /buddy panel on `view`'s tab, in a rounded frame as the terminal seats a pane. */
+export function renderPanel(view: PanelView): string {
+  const noop = { run: () => {}, tab: () => {}, releasing: () => {}, dex: () => {} }
+  const framed: Node = { type: 'Box', props: { borderStyle: 'round', borderDimColor: true }, children: [panel(els, view, noop, false) as unknown as Node] }
+  const grid = layout(framed)
+  return toSvg(grid.rows.map(r => pad(r, grid.w)))
+}
+
 /** EXP behind the skills, so the bars beside the bubble show some work: each skill is the square root. */
 const SKILL_EXP = { green: 3600, commit: 1600, tool: 4900, prompt: 2500, config: 400, judge: 900 }
 
@@ -161,6 +180,15 @@ export function sceneSave(id: number, level: number, over: Partial<Save> = {}): 
 
 const ROWS = 20, COLUMNS = 100
 
+/** A box of the given species at a few levels, the second shiny, and the Pokédex they make. */
+function boxOf(ids: number[]): Pick<Save, 'box' | 'caught'> {
+  const box = ids.map((id, i) => {
+    const level = [7, 4, 2][i] ?? 1
+    return { species: id, isShiny: i === 1, personality: 'brave' as const, nickname: null, level, exp: expForLevel(species(id).growth, level) }
+  })
+  return { box, caught: [4, ...ids] }
+}
+
 export function scenes(): Record<string, string> {
   const charmander = sceneSave(4, 12)
   const said = 'Char! Tests are green again, nice work.'
@@ -170,6 +198,8 @@ export function scenes(): Record<string, string> {
     'compact.svg': renderScene(view({ save: { ...charmander, view: 'compact' }, showFull: false }), ROWS, COLUMNS),
     'shiny.svg': renderScene(view({ save: sceneSave(25, 22, { isShiny: true }), bubble: 'Pika pika! A shiny day for a push.' }), ROWS, COLUMNS),
     'evolving.svg': renderScene(view({ save: sceneSave(4, 16, { evolution: { to: 5 } }), bubble: null, evolving: true }), ROWS, COLUMNS),
+    'panel.svg': renderPanel({ save: { ...charmander, bag: { 'fire-stone': 1 }, ...boxOf([92, 25, 133]) }, tab: 'buddy', releasing: null, note: null, dex: { page: 0, entry: null }, today: '2026-10-11', columns: 96 }),
+    'panel-box.svg': renderPanel({ save: { ...charmander, ...boxOf([92, 25, 133]) }, tab: 'box', releasing: null, note: null, dex: { page: 0, entry: null }, today: '2026-10-11', columns: 96 }),
   }
 }
 
