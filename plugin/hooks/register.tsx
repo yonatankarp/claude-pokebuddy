@@ -1,14 +1,16 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PromptOrigin, Register, ToolCallResult } from 'claude-code'
-import { runCommand, type CommandIO } from './commands'
+import { parseArgs, runCommand, statsText, type CommandIO } from './commands'
 import { EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
 import { species } from './data/dex'
 import { stoneName } from './data/types'
+import { catchWild, encountersEarned, JUDGE_ENCOUNTER } from './collection'
 import { applyExp, applyTurn, finishEvolution, type GameEvent } from './game'
 import { judge } from './judge'
 import { FINISHED_MAX, lineSession, tagLine, takeEnded } from './log'
 import { localTime } from './localtime'
 import { band, type BandView } from './render/band'
+import { panel, PANEL, PANEL_ROWS, type PanelTab } from './render/panel'
 import { signalsFromTool, type Outcome } from './signals'
 import { EXCERPT_MAX, speak, turnFacts } from './speech'
 import { freshSave, parseSave, type Save } from './state'
@@ -17,6 +19,9 @@ import { emptyTally, scoreTally, withoutReds, type Tally } from './tally'
 const saveAtom = atom({ plugin: 'pokebuddy', key: 'save' } as const, null)
 const bubbleAtom = atom({ plugin: 'pokebuddy', key: 'bubble' } as const, null)
 const flashAtom = atom({ plugin: 'pokebuddy', key: 'flashUntil' } as const, 0)
+const tabAtom = atom({ plugin: 'pokebuddy', key: 'panelTab' } as const, 'buddy')
+const releasingAtom = atom({ plugin: 'pokebuddy', key: 'releasing' } as const, null)
+const noteAtom = atom({ plugin: 'pokebuddy', key: 'panelNote' } as const, null)
 
 const WINDOW_MS = 10 * 60 * 1000
 const READ_ONLY = 'Your pokebuddy save is from a newer version of the mod. Update the mod; nothing was changed.'
@@ -95,8 +100,9 @@ async function announce($: EngineInterface, events: readonly GameEvent[], save: 
     if (ev.kind === 'stone') $.ui.toast(`You found a ${stoneName(ev.stone)}!`)
     if (ev.kind === 'evolved') $.ui.toast(`Congratulations! ${species(ev.from).name} evolved into ${species(ev.to).name}!`)
     if (ev.kind === 'max') $.ui.toast('Level 100!')
+    if (ev.kind === 'caught') $.ui.toast(`A wild ${species(ev.species).name}${ev.isShiny ? ' ★' : ''} appeared! Caught it. /buddy to see your box.`)
   }
-  if (events.some(e => e.kind === 'level' || e.kind === 'evolved' || e.kind === 'evolving')) {
+  if (events.some(e => e.kind === 'level' || e.kind === 'evolved' || e.kind === 'evolving' || e.kind === 'caught')) {
     const now = await $.clock.now()
     await update($, flashAtom, () => now + FLASH_MS)
     $.clock.after(FLASH_MS + 50, () => $.ui.invalidate('ui.render'))
@@ -133,6 +139,7 @@ function commandIO($: EngineInterface, isInteractive: boolean): CommandIO {
     blockedText: () => READ_ONLY,
     quietBubble: async () => { await update($, bubbleAtom, () => null) },
     evolutionStopped: () => { evolutionTimer.generation++ },
+    randomSeed,
   }
 }
 
@@ -154,7 +161,13 @@ async function judgeEnded($: EngineInterface, model: string, loaded: Save | null
     $.clock.after(0, async () => {
       const score = await judge(clients($), model, taken)
       if (score === null) return
-      await mutate($, s => applyExp(s, { judge: score }))
+      const date = localTime(await $.clock.now()).date
+      await mutate($, s => {
+        const judged = applyExp(s, { judge: score })
+        if (score < JUDGE_ENCOUNTER) return judged
+        const met = catchWild(judged.save, 1, randomSeed, date)
+        return { save: met.save, events: [...judged.events, ...met.events] }
+      })
       $.ui.toast(`Last session judged ${score}/100: +${score} EXP`)
     })
   }
@@ -251,7 +264,9 @@ export const register: Register = (on, options) => {
     const local = localTime(now)
     const facts = turnFacts(turn.signals, turn.prompts)
     const r = await mutate($, s => {
-      const applied = applyTurn(s, scoreTally(turn, s.checks), local)
+      const turned = applyTurn(s, scoreTally(turn, s.checks), local)
+      const met = catchWild(turned.save, encountersEarned(s.counters, turned.save.counters), randomSeed, local.date)
+      const applied = { save: met.save, events: [...turned.events, ...met.events] }
       // A session resumed under an id that had ended is running again: its lines wait for its next end.
       const finishedSessions = applied.save.finishedSessions.filter(id => id !== sid)
       return { ...applied, save: { ...applied.save, finishedSessions, pendingLog: [...applied.save.pendingLog, tagLine(sid, now, facts)].slice(-PENDING_LOG_MAX) } }
@@ -268,7 +283,39 @@ export const register: Register = (on, options) => {
     return result
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'buddy' }, async ($, e) => ({ text: await runCommand(commandIO($, isInteractive), e.args) }))
+  on('command.run', { command: 'buddy' }, async ($, e) => {
+    const io = commandIO($, isInteractive)
+    // Bare /buddy opens the panel, a mistyped one on its Commands tab; where no surface can show it
+    // (a headless run), the stats or the help as text.
+    const isHelp = parseArgs(e.args).sub === 'help'
+    if (e.args.trim() && !isHelp) return { text: await runCommand(io, e.args) }
+    const save = await io.load()
+    if (!save) return { text: io.blockedText() }
+    await io.show(save)
+    await update($, noteAtom, () => null)
+    await update($, releasingAtom, () => null)
+    if (isHelp) await update($, tabAtom, () => 'commands')
+    const opened = await $.ui.open({ id: PANEL, title: 'pokebuddy', focus: true, closeOnEscape: true, holdToasts: true, rows: PANEL_ROWS })
+      .catch(() => ({ isPlaced: false as const }))
+    if (opened.isPlaced) return {}
+    return { text: isHelp ? await runCommand(io, e.args) : statsText(save, localTime(await io.now()).date) }
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANEL }, async ($, e) => {
+    const save = await read($, saveAtom)
+    const els = $.ui.resolve(e)
+    if (!save) return <els.Text dimColor>No buddy yet. Send a prompt to meet one.</els.Text>
+    const io = commandIO($, isInteractive)
+    const view = {
+      save, tab: await read($, tabAtom) as PanelTab, releasing: await read($, releasingAtom),
+      note: await read($, noteAtom), today: localTime(await $.clock.now()).date,
+    }
+    return panel(els, view, {
+      run: args => { void runCommand(io, args).then(text => update($, noteAtom, () => text)) },
+      tab: tab => { void update($, tabAtom, () => tab); void update($, noteAtom, () => null); void update($, releasingAtom, () => null) },
+      releasing: index => { void update($, releasingAtom, () => index) },
+    }, e.surface !== 'terminal')
+  })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)

@@ -12,6 +12,7 @@ export type GameEvent =
   | { kind: 'evolved'; from: number; to: number }
   | { kind: 'stone'; stone: Stone }
   | { kind: 'max' }
+  | { kind: 'caught'; species: number; isShiny: boolean }
 
 type Result = { save: Save; events: GameEvent[] }
 
