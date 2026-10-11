@@ -6,6 +6,11 @@ import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
 import { exportBlob, freshSave } from '../hooks/state'
 
+const usage = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
+let toasts: string[] = []
+let modelCalls: string[] = []
+let modelReply = '42'
+
 const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
 
 /**
@@ -13,13 +18,20 @@ const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stri
  * `store` noun, so the test keeps the map to read what the mod wrote), the session's start,
  * command registration and toasts.
  */
-function world(on: On, entries: Record<string, unknown> = {}) {
+function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
   const store = new Map<string, unknown>(Object.entries(entries).map(([k, v]) => [k, copy(v)]))
+  toasts = []
+  modelCalls = []
   on('store.get', async (_$, e) => ({ value: copy(store.get(e.key)) }))
   on('store.set', async (_$, e) => { store.set(e.key, copy(e.value)); return { value: undefined } })
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('session.id', async () => ({ value: sid }))
+  on('model.complete', async (_$, e) => {
+    modelCalls.push(e.prompt)
+    return { value: { isAnswered: true as const, text: modelReply, usage } }
+  })
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
-  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.toast', async (_$, e) => { toasts.push(e.text); return { value: undefined } })
   on('ui.invalidate', async () => ({ value: undefined }))
   return store
 }
@@ -47,7 +59,7 @@ const run = (args: string) => ({
 })
 
 /** The kit does not start a session on its own: raise `session.start` as a session opening does. */
-const start = ($: Engine) => $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+const start = ($: Engine, isInteractive = true) => $.session.start({ cwd: '/', surface: isInteractive ? 'terminal' : null, isInteractive })
 
 describe('register', () => {
   test('first session rolls and stores a save', async ($, on) => {
@@ -68,13 +80,69 @@ describe('register', () => {
     expect(store.get('save')).toEqual({ version: 99, anything: true })
   })
 
-  test('a corrupt save is backed up before a fresh roll', async ($, on) => {
+  test('a future-version save toasts once per session', async ($, on) => {
+    world(on, { save: { version: 99, anything: true } })
+    mock.clock(on)
+    await start($)
+    await $.command.run(run('feed'))
+    await $.command.run(run('stats'))
+    expect(toasts.filter(t => /newer version/.test(t))).toHaveLength(1)
+  })
+
+  test('a corrupt save is kept, backed up and the mod goes read-only', async ($, on) => {
     const store = world(on, { save: 'garbage' })
     mock.clock(on)
     await start($)
-    await $.command.run(run('stats'))
+    const r = await $.command.run(run('stats'))
+    await $.command.run(run('feed'))
+    expect(store.get('save')).toBe('garbage')
     expect(store.get('save.bak')).toBe('garbage')
-    expect((store.get('save') as { version: number }).version).toBe(1)
+    expect(r.text).toMatch(/could not be read/)
+    expect(toasts.filter(t => /could not be read.*save\.bak.*\/buddy restore.*\/buddy reset/.test(t))).toHaveLength(1)
+  })
+
+  test('a corrupt save never overwrites a valid backup', async ($, on) => {
+    const good = freshSave([9, 9, 9, 9])
+    const store = world(on, { save: 'garbage', 'save.bak': good })
+    mock.clock(on)
+    await start($)
+    await $.command.run(run('stats'))
+    expect(store.get('save.bak')).toEqual(good)
+  })
+
+  test('restore swaps a valid backup in and keeps the current raw as save.bak', async ($, on) => {
+    const good = freshSave([9, 9, 9, 9])
+    const store = world(on, { save: 'garbage', 'save.bak': good })
+    mock.clock(on)
+    await start($)
+    const r = await $.command.run(run('restore'))
+    expect(r.text).toMatch(/Restored/)
+    expect(store.get('save')).toEqual(good)
+    expect(store.get('save.bak')).toBe('garbage')
+    const after = await $.command.run(run('toggle'))
+    expect(after.text).toMatch(/view/)
+  })
+
+  test('restore refuses a backup that is not a valid save', async ($, on) => {
+    const store = world(on, { save: 'garbage', 'save.bak': 'also garbage' })
+    mock.clock(on)
+    await start($)
+    const r = await $.command.run(run('restore'))
+    expect(r.text).toMatch(/save\.bak/)
+    expect(store.get('save')).toBe('garbage')
+  })
+
+  test('reset rolls a fresh save and backs up the current one', async ($, on) => {
+    const s = freshSave([1, 2, 3, 4])
+    const store = world(on, { save: s })
+    mock.clock(on)
+    await start($)
+    const r = await $.command.run(run('reset'))
+    expect(r.text).toMatch(/save\.bak/)
+    expect(store.get('save.bak')).toEqual(s)
+    const fresh = store.get('save') as { version: number; seed: number[] }
+    expect(fresh.version).toBe(1)
+    expect(fresh.seed).not.toEqual(s.seed)
   })
 
   test('feed once a day through the command', async ($, on) => {
@@ -185,10 +253,80 @@ describe('register', () => {
     expect(COMMAND).toBe('buddy')
   })
 
-  test('slash commands and plugin prompts earn no prompt EXP', () => {
+  test('only the person\'s own prompts earn prompt EXP', () => {
     expect(countsAsPrompt({ text: '/buddy feed', origin: { kind: 'composer' } })).toBe(false)
     expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'plugin', name: 'x' } })).toBe(false)
+    expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'task-notification' } })).toBe(false)
+    expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'scheduled-trigger' } })).toBe(false)
+    expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'sdk' } })).toBe(false)
     expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'composer' } })).toBe(true)
+    expect(countsAsPrompt({ text: 'fix it', origin: { kind: 'bridge' } })).toBe(true)
+  })
+
+  test('a turn tags its log line with the session id', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    mock.clock(on, { now: NOON })
+    await start($)
+    await prompt($)
+    await endTurn($)
+    expect((store.get('save') as Stored).pendingLog).toEqual(['S1\t1 prompt'])
+  })
+
+  test('session start judges other sessions\' lines once and keeps its own', async ($, on) => {
+    const s = { ...freshSave([1, 2, 3, 4]), pendingLog: ['OLD\t1 commit', 'plain line', 'S1\t1 prompt'] }
+    const store = world(on, { save: s })
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await clock.advance(1)
+    const after = store.get('save') as Stored
+    expect(after.pendingLog).toEqual(['S1\t1 prompt'])
+    expect(after.expBySource.judge).toBe(42)
+    expect(modelCalls).toHaveLength(1)
+    expect(modelCalls[0]).toContain('- 1 commit')
+    expect(modelCalls[0]).toContain('- plain line')
+    expect(modelCalls[0]).not.toContain('1 prompt')
+    await start($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(1)
+    expect((store.get('save') as Stored).expBySource.judge).toBe(42)
+  })
+
+  test('a reload of the same session judges nothing', async ($, on) => {
+    const s = { ...freshSave([1, 2, 3, 4]), pendingLog: ['S1\t1 prompt'] }
+    const store = world(on, { save: s })
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(0)
+    expect((store.get('save') as Stored).pendingLog).toEqual(['S1\t1 prompt'])
+  })
+
+  test('quiet makes no model calls: no judge, no speech, finished logs dropped', async ($, on) => {
+    const s = { ...freshSave([1, 2, 3, 4]), speechOn: false, pendingLog: ['OLD\t1 commit'] }
+    const store = world(on, { save: s })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await prompt($)
+    await endTurn($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(0)
+    expect((store.get('save') as Stored).pendingLog).toEqual(['S1\t1 prompt'])
+  })
+
+  test('a headless run earns nothing, speaks not and leaves the log alone', async ($, on) => {
+    const s = { ...freshSave([1, 2, 3, 4]), pendingLog: ['OLD\t1 commit'] }
+    const store = world(on, { save: s })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($, false)
+    await prompt($)
+    await bash($, 'git commit -m x')
+    await endTurn($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(0)
+    expect(store.get('save')).toEqual(s)
   })
 
   test('only main-loop turns are handled', () => {

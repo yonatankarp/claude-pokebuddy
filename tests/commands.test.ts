@@ -24,6 +24,12 @@ describe('commands', () => {
     expect(t).toContain('THUNDER STONE ×1')
     expect(t).toContain('Thunder Stone 0/10 green checks')
   })
+  test('stats skips EXP sources this version does not know', () => {
+    const s = { ...freshSave([1, 2, 3, 4]), expBySource: { prompt: 10, bogus: 5 } as Record<string, number> }
+    const t = statsText(s)
+    expect(t).toContain('prompts: 10')
+    expect(t).not.toContain('undefined')
+  })
   test('dex text has number, types, size and entry', () => {
     const t = dexText(species(25), false)
     expect(t).toContain('#025 PIKACHU')
@@ -32,7 +38,7 @@ describe('commands', () => {
     expect(t).toContain('6.0 kg')
   })
   test('help names every sub-command', () => {
-    for (const sub of ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'quiet', 'nickname', 'export', 'import']) {
+    for (const sub of ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'quiet', 'nickname', 'export', 'import', 'restore', 'reset']) {
       expect(helpText('buddy')).toContain(`/buddy ${sub}`)
     }
   })

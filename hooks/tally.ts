@@ -1,3 +1,4 @@
+import { CHECKS_MAX } from './config'
 import type { Signal } from './signals'
 
 export type Source = 'prompt' | 'tool' | 'active' | 'config' | 'commit' | 'push' | 'green' | 'judge' | 'feed'
@@ -20,10 +21,16 @@ export function scoreTally(t: Tally, checks: Checks) {
     else if (s.kind === 'commit') commits++
     else if (s.kind === 'push' || s.kind === 'pr') pushes++
     else if (s.kind === 'check') {
-      if (!s.ok) nextChecks[s.key] = true
+      if (!s.ok) {
+        // Re-inserted so key order stays oldest failure first, for the cap below.
+        delete nextChecks[s.key]
+        nextChecks[s.key] = true
+      }
       else if (nextChecks[s.key]) { greens++; delete nextChecks[s.key] }
     }
   }
+  const keys = Object.keys(nextChecks)
+  for (const k of keys.slice(0, Math.max(0, keys.length - CHECKS_MAX))) delete nextChecks[k]
   add('prompt', t.prompts * EXP.prompt)
   add('tool', Math.min(TOOL_CAP, tools * EXP.tool))
   add('active', t.activeWindows * EXP.active)

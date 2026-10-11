@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { isConfigPath, signalsFromTool, splitCommand } from '../hooks/signals'
+import { isConfigPath, signalsFromTool, splitCommand, type Signal } from '../hooks/signals'
 
-const bash = (command: string, isError = false) => signalsFromTool('Bash', { command }, isError).map(s => s.kind === 'check' ? `check:${s.key}:${s.ok}` : s.kind)
+const label = (s: Signal) => (s.kind === 'check' ? `check:${s.key}:${s.ok}` : s.kind)
+const bash = (command: string, isError = false) => signalsFromTool('Bash', { command }, isError ? 'failed' : 'ok').map(label)
 
 describe('splitCommand', () => {
   test('splits on && || ; | outside quotes and keeps quoted words whole', () => {
@@ -24,7 +25,7 @@ describe('splitCommand', () => {
 describe('signalsFromTool', () => {
   test('every call is a tool signal', () => {
     expect(bash('ls')).toEqual(['tool'])
-    expect(signalsFromTool('Read', { file_path: '/x' }, false).map(s => s.kind)).toEqual(['tool'])
+    expect(signalsFromTool('Read', { file_path: '/x' }, 'ok').map(s => s.kind)).toEqual(['tool'])
   })
   test('commit, push and PR on success only', () => {
     expect(bash('git add -A && git commit -m "x"')).toEqual(['tool', 'commit'])
@@ -57,12 +58,12 @@ describe('signalsFromTool', () => {
     expect(bash('git push 2>&1 | tail -5')).toEqual(['tool'])
   })
   test('config edits through Edit, Write and MultiEdit', () => {
-    const k = (tool: string, file_path: string) => signalsFromTool(tool, { file_path }, false).map(s => s.kind)
+    const k = (tool: string, file_path: string) => signalsFromTool(tool, { file_path }, 'ok').map(s => s.kind)
     expect(k('Edit', '/repo/CLAUDE.md')).toEqual(['tool', 'config'])
     expect(k('Write', '/Users/me/.claude/settings.json')).toEqual(['tool', 'config'])
     expect(k('MultiEdit', '/repo/.claude/skills/x/SKILL.md')).toEqual(['tool', 'config'])
     expect(k('Edit', '/repo/src/main.ts')).toEqual(['tool'])
-    expect(signalsFromTool('Edit', { file_path: '/repo/CLAUDE.md' }, true).map(s => s.kind)).toEqual(['tool'])
+    expect(signalsFromTool('Edit', { file_path: '/repo/CLAUDE.md' }, 'failed').map(s => s.kind)).toEqual(['tool'])
   })
   test('isConfigPath', () => {
     expect(isConfigPath('AGENTS.md')).toBe(true)
@@ -93,7 +94,8 @@ describe('signalsFromTool hardening', () => {
     expect(bash('./gradlew test || true')).toEqual(['tool'])
     expect(bash('git commit -m x; git status')).toEqual(['tool'])
     expect(bash('./gradlew test & git push')).toEqual(['tool'])
-    expect(bash('cd r && ./gradlew test', true)).toEqual(['tool', 'check:./gradlew test:false'])
+    expect(bash('cd r && ./gradlew test', true)).toEqual(['tool'])
+    expect(bash('cd r && ./gradlew test')).toEqual(['tool', 'check:./gradlew test:true'])
     expect(bash('npm test && git push', true)).toEqual(['tool'])
     expect(bash('git add . && git commit -m x && git push')).toEqual(['tool', 'commit', 'push'])
     expect(bash('git commit -m x;')).toEqual(['tool', 'commit'])
@@ -116,5 +118,30 @@ describe('signalsFromTool hardening', () => {
     expect(bash('git push --dry-run origin')).toEqual(['tool'])
     expect(bash('git commit -m x --dry-run')).toEqual(['tool'])
     expect(bash('git commit -m --dry-run')).toEqual(['tool', 'commit'])
+  })
+})
+
+describe('signalsFromTool outcome', () => {
+  test('a background Bash call has no outcome yet', () => {
+    const bg = (command: string) => signalsFromTool('Bash', { command, run_in_background: true }, 'ok').map(label)
+    expect(bg('git commit -m x')).toEqual(['tool'])
+    expect(bg('git push')).toEqual(['tool'])
+    expect(bg('gh pr create --fill')).toEqual(['tool'])
+    expect(bg('npm test')).toEqual(['tool'])
+  })
+  test('a trailing & backgrounds the command', () => {
+    expect(bash('npm test &')).toEqual(['tool'])
+    expect(bash('git push &')).toEqual(['tool'])
+    expect(bash('npm test &> out.log')).toEqual(['tool', 'check:npm test:true'])
+  })
+  test('a failure is red only for a check that is the sole segment', () => {
+    expect(bash('npm test', true)).toEqual(['tool', 'check:npm test:false'])
+    expect(bash('cd web && npm test', true)).toEqual(['tool'])
+    expect(bash('npm run build && npm test', true)).toEqual(['tool'])
+  })
+  test('a denied call has an unknown outcome: only the tool signal', () => {
+    expect(signalsFromTool('Bash', { command: 'npm test' }, 'unknown').map(label)).toEqual(['tool'])
+    expect(signalsFromTool('Bash', { command: 'git commit -m x' }, 'unknown').map(label)).toEqual(['tool'])
+    expect(signalsFromTool('Edit', { file_path: '/repo/CLAUDE.md' }, 'unknown').map(label)).toEqual(['tool'])
   })
 })

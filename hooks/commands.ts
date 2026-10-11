@@ -5,7 +5,7 @@ import { expForLevel, MAX_LEVEL } from './exp'
 import type { Save } from './state'
 import type { Source } from './tally'
 
-const SUBS = ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'quiet', 'nickname', 'export', 'import'] as const
+const SUBS = ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'quiet', 'nickname', 'export', 'import', 'restore', 'reset'] as const
 export type Parsed = { sub: (typeof SUBS)[number] | 'help'; rest: string }
 
 export function parseArgs(args: string): Parsed {
@@ -32,7 +32,7 @@ export function statsText(save: Save): string {
   const sp = species(save.species)
   const toNext = save.level >= MAX_LEVEL ? 'max level' : `${expForLevel(sp.growth, save.level + 1) - save.exp} EXP to Lv ${save.level + 1}`
   const bag = STONES.filter(s => save.bag[s]).map(s => `${stoneName(s)} ×${save.bag[s]}`).join(', ') || 'empty'
-  const sources = Object.entries(save.expBySource).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+  const sources = Object.entries(save.expBySource).filter(([k]) => k in SOURCE_NAMES).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
     .map(([k, n]) => `  ${SOURCE_NAMES[k as Source]}: ${n}`).join('\n') || '  nothing yet'
   const c = save.counters
   const hints = sp.evolutions.map(e =>
@@ -70,5 +70,7 @@ export function helpText(command: string): string {
     `/${command} nickname <name>: set a nickname (empty to clear)`,
     `/${command} export: copy your save to the clipboard`,
     `/${command} import <blob>: restore a save`,
+    `/${command} restore: swap save.bak back in`,
+    `/${command} reset: roll a new Pokémon (the current save goes to save.bak)`,
   ].join('\n')
 }

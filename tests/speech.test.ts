@@ -39,6 +39,16 @@ describe('speech', () => {
     expect(cleanReply('x'.repeat(200), 80)!.length).toBe(80)
     expect(cleanReply('line one\nline two', 80)).toBe('line one')
   })
+  test('cleanReply rejects refusals and lead-ins', () => {
+    expect(cleanReply("I can't roleplay that.", 80)).toBe(null)
+    expect(cleanReply('I can’t do that', 80)).toBe(null)
+    expect(cleanReply('I cannot help', 80)).toBe(null)
+    expect(cleanReply('Sorry, no.', 80)).toBe(null)
+    expect(cleanReply('As an AI, I lack feelings', 80)).toBe(null)
+    expect(cleanReply('Here is my reaction:', 80)).toBe(null)
+    expect(cleanReply('"Sorry about that test!"', 80)).toBe(null)
+    expect(cleanReply('Squirtle! Nice push.', 80)).toBe('Squirtle! Nice push.')
+  })
   test('speak returns the cleaned model reply', async () => {
     const $ = client(() => ({ isAnswered: true, text: '"Pika pi!"\nextra', usage }))
     const s = { ...freshSave([1, 2, 3, 4]), species: 25 }

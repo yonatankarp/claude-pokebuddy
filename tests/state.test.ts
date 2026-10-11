@@ -86,10 +86,18 @@ describe('save', () => {
   test('rejects bad bag, expBySource and checks', () => {
     expect(corrupt({ bag: { 'fire-stone': -1 } })).toBe('corrupt')
     expect(corrupt({ bag: { 'fire-stone': 1.5 } })).toBe('corrupt')
-    expect(corrupt({ bag: { 'mystery-stone': 1 } })).toBe('corrupt')
     expect(corrupt({ expBySource: { tool: NaN } })).toBe('corrupt')
-    expect(corrupt({ expBySource: { bogus: 1 } })).toBe('corrupt')
     expect(corrupt({ checks: { k: 'true' } })).toBe('corrupt')
+  })
+  test('unknown keys in expBySource and bag are ignored, so a newer point release still reads', () => {
+    expect(corrupt({ bag: { 'mystery-stone': 1 } })).toBe('ok')
+    expect(corrupt({ bag: { 'mystery-stone': 'x' } })).toBe('ok')
+    expect(corrupt({ expBySource: { bogus: 1 } })).toBe('ok')
+  })
+  test('checks hold at most 100 keys', () => {
+    const many = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`k${i}`, true]))
+    expect(corrupt({ checks: many(100) })).toBe('ok')
+    expect(corrupt({ checks: many(101) })).toBe('corrupt')
   })
   test('rejects bad date strings', () => {
     expect(corrupt({ lastMoonDate: 'yesterday' })).toBe('corrupt')

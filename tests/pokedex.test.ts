@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
+import { findSpecies } from '../hooks/data/dex'
 import { POKEDEX } from '../hooks/data/pokedex.generated'
 
 describe('generated pokedex', () => {
@@ -25,5 +26,22 @@ describe('generated pokedex', () => {
   test('dex text has no soft hyphens and keeps words whole', () => {
     for (const s of POKEDEX) expect(s.dex.includes('\u00ad')).toBe(false)
     expect(POKEDEX[24]!.dex).toContain('angered')
+  })
+  test('findSpecies forgives case, punctuation, spaces and the gender signs', () => {
+    const id = (q: string) => findSpecies(q)?.id
+    expect(id('pikachu')).toBe(25)
+    expect(id('#25')).toBe(25)
+    expect(id('nidoranf')).toBe(29)
+    expect(id('nidoran-f')).toBe(29)
+    expect(id('Nidoran♀')).toBe(29)
+    expect(id('nidoran-m')).toBe(32)
+    expect(id('NIDORANM')).toBe(32)
+    expect(id('farfetchd')).toBe(83)
+    expect(id("farfetch'd")).toBe(83)
+    expect(id('mr mime')).toBe(122)
+    expect(id('mr. mime')).toBe(122)
+    expect(id('mrmime')).toBe(122)
+    expect(id('nidoran')).toBeUndefined()
+    expect(id('agumon')).toBeUndefined()
   })
 })

@@ -45,4 +45,13 @@ describe('scoreTally', () => {
     expect(r.commits).toBe(1)
     expect(r.pushes).toBe(2)
   })
+  test('checks keep the 100 most recent failing keys', () => {
+    const old = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`k${i}`, true]))
+    const t = { ...emptyTally(), signals: [{ kind: 'check', key: 'k0', ok: false }, { kind: 'check', key: 'new', ok: false }] as Signal[] }
+    const r = scoreTally(t, old)
+    expect(Object.keys(r.checks)).toHaveLength(100)
+    expect(r.checks.k1).toBeUndefined()
+    expect(r.checks.k0).toBe(true)
+    expect(r.checks.new).toBe(true)
+  })
 })

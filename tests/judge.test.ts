@@ -8,11 +8,15 @@ const usage = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 
 const client = (complete: (r: ModelCompleteRequest) => ModelCompleteResult | Promise<ModelCompleteResult>) => ({ model: { complete: async (r: ModelCompleteRequest) => complete(r) } })
 
 describe('judge', () => {
-  test('parseScore takes the first integer 0 to 100', () => {
-    expect(parseScore('SCORE: 72')).toBe(72)
-    expect(parseScore('I would say 101')).toBe(100)
-    expect(parseScore('no idea')).toBe(null)
+  test('parseScore prefers a whole-reply integer, else the last integer 0 to 100', () => {
+    expect(parseScore(' 72 ')).toBe(72)
     expect(parseScore('-5')).toBe(0)
+    expect(parseScore('250')).toBe(100)
+    expect(parseScore('SCORE: 72')).toBe(72)
+    expect(parseScore('Out of 100, I give it 65')).toBe(65)
+    expect(parseScore('3 commits and 2 pushes: 80')).toBe(80)
+    expect(parseScore('I would say 101')).toBe(null)
+    expect(parseScore('no idea')).toBe(null)
   })
   test('prompt lists the log', () => {
     expect(judgePrompt(['1 prompt; 1 commit', 'a quiet turn'])).toContain('- 1 prompt; 1 commit')

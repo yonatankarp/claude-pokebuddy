@@ -28,7 +28,6 @@ declare module 'claude-code' {
       save: Save | null
       bubble: string | null
       flashUntil: number
-      readOnly: boolean
     }
   }
 }

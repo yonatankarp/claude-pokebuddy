@@ -4,10 +4,10 @@ import { dexText, helpText, parseArgs, parseStone, statsText } from './commands'
 import { COMMAND, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
 import { findSpecies, species } from './data/dex'
 import { applyExp, applyTurn, cancelEvolution, feed, finishEvolution, useStone, type GameEvent } from './game'
-import { judge } from './judge'
+import { judge, lineFacts, lineSession, tagLine } from './judge'
 import { localTime, readOffset } from './localtime'
 import { band } from './render/band'
-import { signalsFromTool } from './signals'
+import { signalsFromTool, type Outcome } from './signals'
 import { speak, turnFacts } from './speech'
 import { exportBlob, freshSave, importBlob, parseSave, type Save } from './state'
 import { emptyTally, scoreTally, type Tally } from './tally'
@@ -15,38 +15,76 @@ import { emptyTally, scoreTally, type Tally } from './tally'
 const saveAtom = atom({ plugin: 'pokebuddy', key: 'save' } as const, null)
 const bubbleAtom = atom({ plugin: 'pokebuddy', key: 'bubble' } as const, null)
 const flashAtom = atom({ plugin: 'pokebuddy', key: 'flashUntil' } as const, 0)
-const readOnlyAtom = atom({ plugin: 'pokebuddy', key: 'readOnly' } as const, false)
 
 const WINDOW_MS = 10 * 60 * 1000
 const READ_ONLY = 'Your pokebuddy save is from a newer version of the mod. Update the mod; nothing was changed.'
+const CORRUPT = 'Your pokebuddy save could not be read. It was kept in save.bak. Run /buddy restore or /buddy reset.'
+
+/** Why the save cannot be used this session (null when it can), and whether the person was told. */
+const blocked: { reason: string | null; isToasted: boolean } = { reason: null, isToasted: false }
+const blockedText = () => ({ text: blocked.reason ?? READ_ONLY })
+const randomSeed = () => Array.from(crypto.getRandomValues(new Uint32Array(4)))
 
 export function shouldHandleTurn(e: { agentId?: string; isAborted: boolean }): boolean {
   return e.agentId === undefined
 }
 
+/** Only the person's own typing earns prompt EXP: at the terminal or through the Remote Control bridge. */
 export function countsAsPrompt(e: { text: string; origin: PromptOrigin }): boolean {
-  return e.origin.kind !== 'plugin' && !e.text.trimStart().startsWith('/')
+  return (e.origin.kind === 'composer' || e.origin.kind === 'bridge') && !e.text.trimStart().startsWith('/')
 }
 
-function failed(ran: ToolCallResult): boolean {
-  return ran.deny !== undefined || ran.isError === true
+function outcome(ran: ToolCallResult): Outcome {
+  if (ran.deny !== undefined) return 'unknown'
+  return ran.isError === true ? 'failed' : 'ok'
 }
 
-/** Reads the save fresh from the store. null when it is from a newer version. */
+/**
+ * Copies `raw` to save.bak, unless `raw` is unreadable and save.bak already holds something readable:
+ * an earlier good backup is never replaced by a damaged save. Returns whether it wrote.
+ */
+async function backUp($: EngineInterface, raw: unknown): Promise<boolean> {
+  if (raw === undefined) return false
+  if (parseSave(raw).kind === 'corrupt') {
+    const bak = parseSave(await $.store.get('save.bak')).kind
+    if (bak !== 'empty' && bak !== 'corrupt') return false
+  }
+  await $.store.set('save.bak', raw as never)
+  return true
+}
+
+/**
+ * Reads the save fresh from the store; rolls one when there is none. null when it is from a newer
+ * version or unreadable: nothing is written over it, and the person is told once per session.
+ */
 async function loadFresh($: EngineInterface): Promise<Save | null> {
   const raw = await $.store.get('save')
   const parsed = parseSave(raw)
-  if (parsed.kind === 'future') {
-    await update($, readOnlyAtom, () => true)
-    return null
+  if (parsed.kind === 'ok') {
+    blocked.reason = null
+    return parsed.save
   }
-  if (parsed.kind === 'ok') return parsed.save
-  if (parsed.kind === 'corrupt') await $.store.set('save.bak', raw as never)
-  const seed = Array.from(crypto.getRandomValues(new Uint32Array(4)))
-  const save = freshSave(seed)
+  if (parsed.kind === 'empty') {
+    const save = freshSave(randomSeed())
+    await $.store.set('save', save)
+    blocked.reason = null
+    return save
+  }
+  if (parsed.kind === 'corrupt') await backUp($, raw)
+  blocked.reason = parsed.kind === 'future' ? READ_ONLY : CORRUPT
+  if (!blocked.isToasted) {
+    blocked.isToasted = true
+    $.ui.toast(blocked.reason)
+  }
+  return null
+}
+
+/** Puts `save` in place as the live save and lifts any read-only state. */
+async function install($: EngineInterface, save: Save) {
   await $.store.set('save', save)
-  if (parsed.kind === 'corrupt') $.ui.toast('Your pokebuddy save was damaged. It was backed up as save.bak and a new Pokémon was rolled.')
-  return save
+  await update($, saveAtom, () => save)
+  blocked.reason = null
+  blocked.isToasted = false
 }
 
 /** Read fresh, change, write back, refresh the drawing copy. */
@@ -90,18 +128,26 @@ export const register: Register = (on, options) => {
   let tally: Tally = emptyTally()
   let lastWindow = -1
   let offset: number | null = null
+  // Until a session.start says otherwise (a reload may not raise one), assume a person is there.
+  let isInteractive = true
 
   on('session.start', async ($, e, next) => {
+    blocked.isToasted = false
+    isInteractive = e.isInteractive
     await $.command.register({ name: 'buddy', description: 'Your Gen 1 Pokémon buddy: stats, dex, feed, evolve' })
     offset = await readOffset(clients($))
     // A reload or exit inside the evolution window drops its timer; finish it now.
     const loaded = await mutate($, s => (s.evolution ? finishEvolution(s) : { save: s }))
-    // Take the pending log first, then score it, so a second session cannot judge the same turns.
+    if (!isInteractive) return next(e)
+    // Take the finished sessions' lines first, then score them, so no other session judges them again.
+    // This session's own lines stay for the session after it. Quiet means no model calls: they are dropped.
+    const sid = await $.session.id()
     let taken: string[] = []
-    if (loaded && loaded.save.pendingLog.length > 0) {
+    if (loaded && loaded.save.pendingLog.some(l => lineSession(l) !== sid)) {
       await mutate($, s => {
-        taken = s.pendingLog
-        return { save: { ...s, pendingLog: [] } }
+        const finished = s.pendingLog.filter(l => lineSession(l) !== sid)
+        if (s.speechOn) taken = finished.map(lineFacts)
+        return { save: { ...s, pendingLog: s.pendingLog.filter(l => lineSession(l) === sid) } }
       })
     }
     if (taken.length > 0) {
@@ -127,7 +173,7 @@ export const register: Register = (on, options) => {
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     try {
-      tally.signals.push(...signalsFromTool(String(e.tool), e as unknown as Record<string, unknown>, failed(ran)))
+      tally.signals.push(...signalsFromTool(String(e.tool), e as unknown as Record<string, unknown>, outcome(ran)))
     } catch {}
     return ran
   }).catch(($, e, next) => next(e))
@@ -137,11 +183,14 @@ export const register: Register = (on, options) => {
     if (!shouldHandleTurn(e)) return result
     const turn = tally
     tally = emptyTally()
+    // A headless run (-p, the SDK) has no one watching: no EXP, no log line, no speech.
+    if (!isInteractive) return result
+    const sid = await $.session.id()
     const local = localTime(await $.clock.now(), offset)
     const facts = turnFacts(turn.signals, turn.prompts)
     const r = await mutate($, s => {
       const applied = applyTurn(s, scoreTally(turn, s.checks), local)
-      return { ...applied, save: { ...applied.save, pendingLog: [...applied.save.pendingLog, facts].slice(-PENDING_LOG_MAX) } }
+      return { ...applied, save: { ...applied.save, pendingLog: [...applied.save.pendingLog, tagLine(sid, facts)].slice(-PENDING_LOG_MAX) } }
     })
     if (r?.save.speechOn) {
       const save = r.save
@@ -165,15 +214,15 @@ export const register: Register = (on, options) => {
       case 'stats': {
         const s = await loadFresh($)
         if (s) await update($, saveAtom, () => s)
-        return { text: s ? statsText(s) : READ_ONLY }
+        return s ? { text: statsText(s) } : blockedText()
       }
       case 'dex': {
         const s = await loadFresh($)
-        return { text: s ? dexText(species(s.species), true) : READ_ONLY }
+        return s ? { text: dexText(species(s.species), true) } : blockedText()
       }
       case 'feed': {
         const r = await mutate($, s => feed(s, local))
-        if (!r) return { text: READ_ONLY }
+        if (!r) return blockedText()
         const name = species(r.save.species).name
         if (!r.fed) return { text: `${name} has already eaten today. Come back tomorrow.` }
         const days = r.save.counters.feedRun
@@ -184,34 +233,34 @@ export const register: Register = (on, options) => {
         if (!stone) return { text: 'Which stone? moon, fire, water, thunder or leaf.' }
         let from = 0
         const r = await mutate($, s => { from = s.species; return useStone(s, stone) })
-        if (!r) return { text: READ_ONLY }
+        if (!r) return blockedText()
         if (r.error) return { text: r.error }
         return { text: `${species(from).name} evolved into ${species(r.save.species).name}!` }
       }
       case 'stop': {
         const r = await mutate($, s => cancelEvolution(s))
-        if (!r) return { text: READ_ONLY }
+        if (!r) return blockedText()
         return { text: r.cancelled ? `Huh? ${species(r.save.species).name} stopped evolving!` : 'Nothing is evolving right now.' }
       }
       case 'toggle': {
         const r = await mutate($, s => ({ save: { ...s, view: s.view === 'full' ? 'compact' as const : 'full' as const } }))
-        return { text: r ? `Showing the ${r.save.view} view.` : READ_ONLY }
+        return r ? { text: `Showing the ${r.save.view} view.` } : blockedText()
       }
       case 'quiet': {
         const r = await mutate($, s => ({ save: { ...s, speechOn: !s.speechOn } }))
-        if (!r) return { text: READ_ONLY }
+        if (!r) return blockedText()
         if (!r.save.speechOn) await update($, bubbleAtom, () => null)
         return { text: r.save.speechOn ? 'Speech is on.' : 'Speech is off. No model calls will be made for reactions.' }
       }
       case 'nickname': {
         const nickname = rest.trim().slice(0, 12) || null
         const r = await mutate($, s => ({ save: { ...s, nickname } }))
-        if (!r) return { text: READ_ONLY }
+        if (!r) return blockedText()
         return { text: nickname ? `Nickname set to ${nickname}.` : 'Nickname cleared.' }
       }
       case 'export': {
         const s = await loadFresh($)
-        if (!s) return { text: READ_ONLY }
+        if (!s) return blockedText()
         const blob = exportBlob(s)
         const copied = await $.ui.copy({ text: blob })
         return { text: copied.isCopied ? 'Save copied to the clipboard.' : `Copy this save:\n${blob}` }
@@ -219,12 +268,23 @@ export const register: Register = (on, options) => {
       case 'import': {
         const parsed = importBlob(rest)
         if (parsed.kind === 'bad') return { text: parsed.reason }
-        const prev = await $.store.get('save')
-        if (prev !== undefined) await $.store.set('save.bak', prev as never)
-        await $.store.set('save', parsed.save)
-        await update($, saveAtom, () => parsed.save)
-        await update($, readOnlyAtom, () => false)
-        return { text: `Restored ${species(parsed.save.species).name} at Lv ${parsed.save.level}. Your previous save is in save.bak.` }
+        const kept = await backUp($, await $.store.get('save'))
+        await install($, parsed.save)
+        return { text: `Restored ${species(parsed.save.species).name} at Lv ${parsed.save.level}.${kept ? ' Your previous save is in save.bak.' : ''}` }
+      }
+      case 'restore': {
+        const bak = parseSave(await $.store.get('save.bak'))
+        if (bak.kind !== 'ok') return { text: 'save.bak does not hold a save this version can read. Nothing was changed.' }
+        const current = await $.store.get('save')
+        if (current !== undefined) await $.store.set('save.bak', current as never)
+        await install($, bak.save)
+        return { text: `Restored ${species(bak.save.species).name} at Lv ${bak.save.level} from save.bak. The save it replaced is now in save.bak.` }
+      }
+      case 'reset': {
+        const kept = await backUp($, await $.store.get('save'))
+        const save = freshSave(randomSeed())
+        await install($, save)
+        return { text: `A wild ${species(save.species).name} appeared at Lv ${save.level}! ${kept ? 'Your previous save is in save.bak.' : 'save.bak keeps the backup it already had.'}` }
       }
     }
   })

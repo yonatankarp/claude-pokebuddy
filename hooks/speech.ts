@@ -35,11 +35,15 @@ export function speechPrompt(save: Save, facts: string): { system: string; promp
   }
 }
 
+/** Out-of-character openings: the model refusing or explaining instead of speaking. */
+const REFUSAL = /^(i can['’]?t|i cannot|sorry|as an ai)\b/i
+
 export function cleanReply(text: string, max: number): string | null {
   const first = text.split('\n').map(l => l.trim()).find(l => l.length > 0)
   if (!first) return null
   const unquoted = first.replace(/^["'“”]+|["'“”]+$/g, '').trim()
-  return unquoted ? unquoted.slice(0, max) : null
+  if (!unquoted || REFUSAL.test(unquoted) || unquoted.endsWith(':')) return null
+  return unquoted.slice(0, max)
 }
 
 export async function speak($: { model: Pick<EngineInterface['model'], 'complete'> }, model: string, save: Save, facts: string): Promise<string> {

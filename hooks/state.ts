@@ -1,6 +1,6 @@
 import type { Save } from '../types'
 import { base64Decode, base64Encode, fnv1a, fromUtf8, utf8 } from './codec'
-import { PENDING_LOG_MAX } from './config'
+import { CHECKS_MAX, PENDING_LOG_MAX } from './config'
 import { STONES } from './data/types'
 import { expForLevel } from './exp'
 import { species } from './data/dex'
@@ -30,6 +30,11 @@ const isDate = (v: unknown) => v === null || (typeof v === 'string' && /^\d{4}-\
 const SOURCES: readonly string[] = ['prompt', 'tool', 'active', 'config', 'commit', 'push', 'green', 'judge', 'feed']
 const COUNTERS = ['greens', 'commits', 'configEdits', 'feedRun']
 
+/**
+ * The shape version 1 promises. Unknown keys inside expBySource and bag are ignored (kept, never read),
+ * so a point release may add a source or an item without old builds calling the save corrupt.
+ * Any other change to the shape needs a version bump.
+ */
 function validSave(raw: Record<string, unknown>): boolean {
   if (raw.version !== 1) return false
   if (!Array.isArray(raw.seed) || raw.seed.length !== 4 || !raw.seed.every(n => typeof n === 'number' && Number.isInteger(n))) return false
@@ -39,10 +44,10 @@ function validSave(raw: Record<string, unknown>): boolean {
   if (!isNum(raw.lifetimeExp, 0)) return false
   if (typeof raw.isShiny !== 'boolean' || !(PERSONALITIES as readonly unknown[]).includes(raw.personality)) return false
   if (raw.nickname !== null && (typeof raw.nickname !== 'string' || raw.nickname.length > 12)) return false
-  if (!isObj(raw.expBySource) || !Object.entries(raw.expBySource).every(([k, v]) => SOURCES.includes(k) && isNum(v, 0))) return false
-  if (!isObj(raw.bag) || !Object.entries(raw.bag).every(([k, v]) => (STONES as readonly string[]).includes(k) && isInt(v, 0, Number.MAX_SAFE_INTEGER))) return false
+  if (!isObj(raw.expBySource) || !Object.entries(raw.expBySource).every(([k, v]) => !SOURCES.includes(k) || isNum(v, 0))) return false
+  if (!isObj(raw.bag) || !Object.entries(raw.bag).every(([k, v]) => !(STONES as readonly string[]).includes(k) || isInt(v, 0, Number.MAX_SAFE_INTEGER))) return false
   if (!isObj(raw.counters) || !COUNTERS.every(k => isInt((raw.counters as Record<string, unknown>)[k], 0, Number.MAX_SAFE_INTEGER))) return false
-  if (!isObj(raw.checks) || !Object.values(raw.checks).every(v => typeof v === 'boolean')) return false
+  if (!isObj(raw.checks) || Object.keys(raw.checks).length > CHECKS_MAX || !Object.values(raw.checks).every(v => typeof v === 'boolean')) return false
   if (!isDate(raw.lastMoonDate)) return false
   if (!isObj(raw.feed) || !isDate(raw.feed.lastDate)) return false
   if (!Array.isArray(raw.pendingLog) || raw.pendingLog.length > PENDING_LOG_MAX || !raw.pendingLog.every(x => typeof x === 'string')) return false

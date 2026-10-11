@@ -8,6 +8,9 @@ export type Signal =
 
 export type Segment = { tokens: string[]; pipedOut: boolean }
 
+/** How the call ended: `unknown` when it never ran to an answer (a deny) or still runs (backgrounded). */
+export type Outcome = 'ok' | 'failed' | 'unknown'
+
 const RUNNERS = new Set(['gradle', 'gradlew', './gradlew', 'mvn', './mvnw', 'npm', 'pnpm', 'yarn', 'bun', 'npx', 'pytest', 'cargo', 'go', 'make', 'tsc', 'eslint', 'ruff', 'jest', 'vitest'])
 const CHECK_WORDS = /\b(test|tests|check|lint|build|vet|typecheck|vitest|jest|pytest|tsc|eslint|ruff|clippy)\b/
 const WRAPPERS = new Set(['command', 'sudo', 'time', 'nohup', 'exec', 'then', 'do'])
@@ -153,6 +156,7 @@ function isCheck(seg: string[]): boolean {
 function bashSignals(command: string, ok: boolean): Signal[] {
   const raw = splitRaw(command)
   if (raw.slice(0, -1).some(s => s.sep === '||' || s.sep === ';' || s.sep === '\n' || s.sep === '&')) return []
+  if (raw[raw.length - 1]?.sep === '&') return []
   const segs = raw.map(s => ({ seg: normalise(s.tokens), pipedOut: s.sep === '|' })).filter(s => s.seg.length > 0)
   const real = segs.filter(s => s.seg[0] !== 'cd')
   const out: Signal[] = []
@@ -166,17 +170,20 @@ function bashSignals(command: string, ok: boolean): Signal[] {
       else if (sub === 'push' && !hasFlag(args, ['--dry-run', '-n'])) out.push({ kind: 'push' })
     } else if (cmd === 'gh') {
       if (ok && seg[1] === 'pr' && seg[2] === 'create') out.push({ kind: 'pr' })
-    } else if (isCheck(seg) && (ok || real.length === 1)) {
+    } else if (isCheck(seg) && (ok || segs.length === 1)) {
       out.push({ kind: 'check', key: seg.join(' '), ok })
     }
   }
   return out
 }
 
-export function signalsFromTool(tool: string, input: Record<string, unknown>, isError: boolean): Signal[] {
+export function signalsFromTool(tool: string, input: Record<string, unknown>, outcome: Outcome): Signal[] {
   const out: Signal[] = [{ kind: 'tool' }]
-  if (tool === 'Bash' && typeof input.command === 'string') out.push(...bashSignals(input.command, !isError))
-  if (!isError && (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit') && typeof input.file_path === 'string' && isConfigPath(input.file_path)) {
+  if (outcome === 'unknown') return out
+  if (tool === 'Bash' && typeof input.command === 'string' && input.run_in_background !== true) {
+    out.push(...bashSignals(input.command, outcome === 'ok'))
+  }
+  if (outcome === 'ok' && (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit') && typeof input.file_path === 'string' && isConfigPath(input.file_path)) {
     out.push({ kind: 'config', path: input.file_path })
   }
   return out
