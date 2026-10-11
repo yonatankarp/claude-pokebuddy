@@ -125,8 +125,14 @@ async function loadFresh($: EngineInterface): Promise<Save | null> {
   return null
 }
 
-/** Puts `save` in place as the live save and lifts any read-only state. */
-async function install($: EngineInterface, save: Save) {
+/**
+ * Puts `save` in place as the live save and lifts any read-only state. The later reset date of the
+ * two saves is kept, so a restore or an import cannot lift the once-a-day reset limit.
+ */
+async function install($: EngineInterface, incoming: Save) {
+  const cur = parseSave(await $.store.get('save'))
+  const kept = cur.kind === 'ok' ? cur.save.lastResetDate : null
+  const save = kept !== null && (incoming.lastResetDate === null || kept > incoming.lastResetDate) ? { ...incoming, lastResetDate: kept } : incoming
   await $.store.set('save', save)
   await update($, saveAtom, () => save)
   blocked.reason = null

@@ -192,6 +192,21 @@ describe('register', () => {
     expect(tomorrow.text).toMatch(/appeared/)
   })
 
+  test('restore or import after a reset keeps today\'s reset, so a second reset waits for tomorrow', async ($, on) => {
+    const old = freshSave([1, 2, 3, 4])
+    const store = world(on, { save: old })
+    mock.clock(on, { now: NOON })
+    await start($)
+    await $.command.run(run('reset confirm'))
+    const today = (store.get('save') as { lastResetDate: string }).lastResetDate
+    await $.command.run(run('restore'))
+    expect((store.get('save') as { seed: number[]; lastResetDate: string | null })).toEqual({ ...old, lastResetDate: today })
+    expect((await $.command.run(run('reset confirm'))).text).toMatch(/once a day/)
+    await $.command.run(run(`import ${exportBlob(old)}`))
+    expect((store.get('save') as { lastResetDate: string | null }).lastResetDate).toBe(today)
+    expect((await $.command.run(run('reset confirm'))).text).toMatch(/once a day/)
+  })
+
   test('reset confirm is always allowed over a corrupt save', async ($, on) => {
     const store = world(on, { save: { ...freshSave([1, 2, 3, 4]), lastResetDate: 'not a date' } })
     mock.clock(on, { now: NOON })
