@@ -8,8 +8,7 @@
     {
       "name": "pokebuddy",
       "source": "./plugin",
-      "description": "A Gen 1 Pokémon buddy above your prompt that levels up and evolves from real work.",
-      "version": "1.0.0"
+      "description": "A Gen 1 Pokémon buddy above your prompt that levels up and evolves from real work."
     }
   ]
 }

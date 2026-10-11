@@ -1,6 +1,8 @@
 # claude-pokebuddy design
 
-Date: 2026-10-11. Status: approved in conversation, awaiting written-spec review.
+> Historical: written before the first release and superseded by the code, `README.md` and `CONTRIBUTING.md`. Names, paths (the plugin now lives in `plugin/`) and privacy behaviour here are out of date.
+
+Date: 2026-10-11. Status: historical.
 
 ## Goal
 

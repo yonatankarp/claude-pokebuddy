@@ -13,6 +13,6 @@ export async function verifyRaw() {
   for (const [rel, sum] of Object.entries(manifest.files)) {
     const body = await readFile(new URL(rel, RAW)).catch(() => null)
     if (!body) throw new Error(`${rel} is missing from scripts/raw/; run npm run fetch`)
-    if (sha256(body) !== sum) throw new Error(`${rel} does not match scripts/sources.json; run npm run fetch after deleting scripts/raw/, or --update if the change is intended`)
+    if (sha256(body) !== sum) throw new Error(`${rel} does not match scripts/sources.json; delete scripts/raw/ and run npm run fetch to download it again, or run npm run fetch -- --update if the change is intended`)
   }
 }

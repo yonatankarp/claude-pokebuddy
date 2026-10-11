@@ -11,7 +11,7 @@ const update = process.argv.includes('--update')
 const exists = (p: URL) => access(p).then(() => true, () => false)
 
 const known: Manifest = await readFile(MANIFEST, 'utf8').then(JSON.parse, () => ({ spritesRef: SPRITES_REF, files: {} }))
-if (!update && known.spritesRef !== SPRITES_REF) throw new Error('scripts/sources.json was made for another sprites commit; run with --update')
+if (!update && known.spritesRef !== SPRITES_REF) throw new Error('scripts/sources.json was made for another sprites commit; run npm run fetch -- --update')
 const seen: Record<string, string> = {}
 
 // Every input, downloaded now or already on disk, is checked against the recorded checksum, so a changed PokeAPI answer fails loudly.
@@ -33,7 +33,7 @@ async function get(url: string, rel: string, as: 'json' | 'bytes') {
   }
   const sum = sha256(body)
   seen[rel] = sum
-  if (!update && known.files[rel] !== sum) throw new Error(`${rel} does not match scripts/sources.json (${known.files[rel] ?? 'unrecorded'} vs ${sum}); run with --update if the change is intended`)
+  if (!update && known.files[rel] !== sum) throw new Error(`${rel} does not match scripts/sources.json (${known.files[rel] ?? 'unrecorded'} vs ${sum}); run npm run fetch -- --update if the change is intended`)
 }
 
 await mkdir(new URL('sprites/shiny/', RAW), { recursive: true })
