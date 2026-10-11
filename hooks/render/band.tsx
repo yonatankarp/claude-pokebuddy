@@ -6,21 +6,23 @@ import { expBar, pickScale, spriteRows, TYPE_COLOR } from './sprite'
 
 export type BandView = { save: Save; bubble: string | null; showFull: boolean; evolving: boolean; isFlash: boolean }
 
-export type BandInput = RenderInput<'AbovePrompt', 'terminal'>
+export type BandInput = RenderInput<'AbovePrompt', 'terminal' | 'desktop'>
 
-export function band(els: Elements['terminal'], view: BandView, maxRows: number, columns: number) {
+export type BandElements = Pick<Elements['terminal'], 'Box' | 'Text'>
+
+export function band(els: BandElements, view: BandView, maxRows: number, columns: number) {
   const { Box, Text } = els
   const { save } = view
-  const sp = species(view.evolving && save.evolution ? save.evolution.to : save.species)
+  const sp = species(save.species)
   const name = save.nickname ?? sp.name
   const typeColor = TYPE_COLOR[sp.types[0]!]
   const line = (
     <Box key="line" flexDirection="row">
-      <Text color={typeColor}>◓ </Text>
-      <Text bold>{view.evolving ? `What? ${species(save.species).name} is evolving!` : name}</Text>
-      {save.isShiny && <Text color="#f8d030"> ★</Text>}
-      <Text> Lv{save.level} </Text>
-      <Text color={typeColor}>{expBar(save, 8)}</Text>
+      <Text color={typeColor} wrap="truncate-end">◓ </Text>
+      <Text bold wrap="truncate-end">{view.evolving ? `What? ${sp.name} is evolving!` : name}</Text>
+      {save.isShiny && <Text color="#f8d030" wrap="truncate-end"> ★</Text>}
+      <Text wrap="truncate-end"> Lv{save.level} </Text>
+      <Text color={typeColor} wrap="truncate-end">{expBar(save, 8)}</Text>
       {view.bubble && columns >= COMPACT_MIN_COLUMNS && <Text dimColor wrap="truncate-end"> │ “{view.bubble}”</Text>}
     </Box>
   )

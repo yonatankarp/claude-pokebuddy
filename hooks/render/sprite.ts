@@ -50,7 +50,7 @@ export function spriteRows(sprite: Sprite, isShiny: boolean, scale: 1 | 2): Run[
   return rows
 }
 
-/** Rows reserved for the compact line under the sprite. */
+/** Rows reserved below the sprite: the one-row compact line plus one spare row so the band never fills maxRows exactly. */
 const CHROME_ROWS = 2
 
 export function pickScale(sprite: Sprite, maxRows: number, columns: number, isFlash: boolean): 1 | 2 | null {
