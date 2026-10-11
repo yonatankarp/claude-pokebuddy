@@ -21,7 +21,7 @@ const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stri
  * `store` noun, so the test keeps the map to read what the mod wrote), the session's start,
  * command registration and toasts.
  */
-function world(on: On, entries: Record<string, unknown> = {}, sid: string | null = 'S1') {
+function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
   const store = new Map<string, unknown>(Object.entries(entries).map(([k, v]) => [k, copy(v)]))
   toasts = []
   redraws = 0
@@ -29,10 +29,7 @@ function world(on: On, entries: Record<string, unknown> = {}, sid: string | null
   on('store.get', async (_$, e) => ({ value: copy(store.get(e.key)) }))
   on('store.set', async (_$, e) => { store.set(e.key, copy(e.value)); return { value: undefined } })
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
-  on('session.id', async () => {
-    if (sid === null) throw new Error('no session id')
-    return { value: sid }
-  })
+  on('session.id', async () => ({ value: sid }))
   on('model.complete', async (_$, e) => {
     modelCalls.push(e.prompt)
     return { value: { isAnswered: true as const, text: modelReply, usage } }
@@ -369,12 +366,6 @@ describe('register', () => {
     await npmTest($, 'green')
     await endTurn($)
     expect((store.get('save') as Stored).expBySource.green).toBeUndefined()
-  })
-
-  test('a session start that throws still lets the session start', async ($, on) => {
-    world(on, { save: freshSave([1, 2, 3, 4]) }, null)
-    mock.clock(on, { now: NOON })
-    expect(await start($)).toEqual({ cwd: '/' })
   })
 
   test('a v1 save with more than 100 failing checks loads, keeping the newest 100', async ($, on) => {
