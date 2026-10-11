@@ -187,12 +187,14 @@ export async function runCommand(io: CommandIO, args: string): Promise<string> {
       if (i === null) return `No Pokémon at "${which}" in your box. /${COMMAND} box lists them.`
       const m = s.box[i]!
       if (word.toLowerCase() !== 'confirm') return `This lets ${m.nickname ?? species(m.species).name} (Lv ${m.level}) go for good. Run /${COMMAND} release ${i + 1} confirm to go ahead.`
-      // By species and level, not place, so a box another session changed meanwhile never loses the wrong one.
+      // The entry read above, matched whole: a box another session changed meanwhile never loses the wrong one.
+      const same = (b: typeof m) => (Object.keys(m) as (keyof typeof m)[]).every(k => b[k] === m[k])
       const r = await io.mutate(cur => {
-        const at = cur.box.findIndex(b => b.species === m.species && b.level === m.level && b.exp === m.exp)
-        return at === -1 ? { save: cur } : release(cur, at)
+        const at = cur.box[i] && same(cur.box[i]) ? i : cur.box.findIndex(same)
+        return at === -1 ? { save: cur, released: undefined } : release(cur, at)
       })
       if (!r) return io.blockedText()
+      if (!r.released) return `Your box changed meanwhile; nothing was released. /${COMMAND} box lists it now.`
       return `Bye, ${m.nickname ?? species(m.species).name}!`
     }
     case 'feed': {

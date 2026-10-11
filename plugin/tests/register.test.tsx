@@ -831,4 +831,13 @@ describe('register', () => {
     expect((store.get('save') as { box: unknown[] }).box).toHaveLength(0)
     expect((await $.command.run(run('switch 1'))).text).toMatch(/No Pokémon/)
   })
+
+  test('release lets go the very entry named, not a look-alike of the same species and level', async ($, on) => {
+    const gastly = { species: 92, personality: 'brave', nickname: null, level: 1, exp: 0 }
+    const store = world(on, { save: { ...pika(), box: [{ ...gastly, isShiny: true }, { ...gastly, isShiny: false }] } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('release 2 confirm'))).text).toBe('Bye, GASTLY!')
+    expect((store.get('save') as { box: { isShiny: boolean }[] }).box).toEqual([{ ...gastly, isShiny: true }])
+  })
 })

@@ -311,7 +311,9 @@ export const register: Register = (on, options) => {
       note: await read($, noteAtom), today: localTime(await $.clock.now()).date,
     }
     return panel(els, view, {
-      run: args => { void runCommand(io, args).then(text => update($, noteAtom, () => text)) },
+      run: args => {
+        void runCommand(io, args).catch(() => 'Something went wrong; nothing was changed.').then(text => update($, noteAtom, () => text))
+      },
       tab: tab => { void update($, tabAtom, () => tab); void update($, noteAtom, () => null); void update($, releasingAtom, () => null) },
       releasing: index => { void update($, releasingAtom, () => index) },
     }, e.surface !== 'terminal')
