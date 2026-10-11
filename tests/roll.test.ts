@@ -31,7 +31,8 @@ describe('roll', () => {
     }
     const total = POKEDEX.reduce((a, s) => a + rollWeight(s), 0)
     const singleWeight = POKEDEX.filter(s => rollWeight(s) === 0.33).length * 0.33
-    expect(Math.abs(legendary / N - 0.1 / total) < 0.002).toBe(true)
+    expect(legendary > 0).toBe(true)
+    expect(Math.abs(legendary / N - 0.1 / total) < 0.0005).toBe(true)
     expect(Math.abs(single / N - singleWeight / total) < 0.01).toBe(true)
     expect(Math.abs(shiny / N - 1 / 512) < 0.0008).toBe(true)
   })

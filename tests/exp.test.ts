@@ -11,7 +11,7 @@ describe('growth curves', () => {
   for (const [g, lv, exp] of cases) test(`${g} level ${lv} needs ${exp}`, () => expect(expForLevel(g, lv)).toBe(exp))
   test('level 1 needs 0 and medium-slow never goes negative', () => {
     expect(expForLevel('medium-slow', 1)).toBe(0)
-    expect(expForLevel('medium-slow', 2) >= 0).toBe(true)
+    expect(expForLevel('medium-slow', 2)).toBe(9)
   })
   test('levelForExp inverts expForLevel and caps at 100', () => {
     expect(levelForExp('medium-fast', 124)).toBe(4)
