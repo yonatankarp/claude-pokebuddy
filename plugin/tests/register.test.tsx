@@ -4,7 +4,7 @@ import { countsAsPrompt, shouldHandleTurn } from '../hooks/register'
 import { COMMAND, EVOLVE_MS } from '../hooks/config'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
-import { exportBlob, freshSave } from '../hooks/state'
+import { freshSave } from '../hooks/state'
 
 const usage = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
 let toasts: string[] = []
@@ -80,7 +80,7 @@ describe('register', () => {
     await start($)
     await $.command.run(run('stats'))
     const save = store.get('save') as { level: number; species: number } | undefined
-    expect(save?.level).toBe(5)
+    expect(save?.level).toBe(1)
     expect(toasts).toEqual([`A wild ${species(save!.species).name} appeared! Type /buddy to meet it.`])
   })
 
@@ -102,178 +102,22 @@ describe('register', () => {
     expect(toasts.filter(t => /newer version/.test(t))).toHaveLength(1)
   })
 
-  test('a corrupt save is kept, backed up and the mod goes read-only', async ($, on) => {
-    const store = world(on, { save: 'garbage' })
-    mock.clock(on)
-    await start($)
-    const r = await $.command.run(run('stats'))
-    await $.command.run(run('feed'))
-    expect(store.get('save')).toBe('garbage')
-    expect(store.get('save.bak')).toBe('garbage')
-    expect(r.text).toMatch(/could not be read/)
-    expect(toasts.filter(t => /could not be read.*kept in the backup slot.*\/buddy reset confirm.*\/buddy import/.test(t))).toHaveLength(1)
-    expect(toasts.join()).not.toMatch(/restore|save\.bak/)
-  })
-
-  test('a corrupt save never overwrites a valid backup', async ($, on) => {
+  test('a corrupt save is kept under its own key and a fresh buddy rolls in its place', async ($, on) => {
     const good = freshSave([9, 9, 9, 9])
     const store = world(on, { save: 'garbage', 'save.bak': good })
-    mock.clock(on)
-    await start($)
-    await $.command.run(run('stats'))
-    expect(store.get('save.bak')).toEqual(good)
-    expect(toasts).toHaveLength(1)
-    expect(toasts[0]).toMatch(/backup slot holds a good save and was kept; the damaged save was left in place/)
-    expect(toasts[0]).toMatch(/\/buddy restore.*\/buddy reset confirm/)
-  })
-
-  test('a corrupt save with no backup: the advice it gives works', async ($, on) => {
-    const store = world(on, { save: 'garbage' })
-    mock.clock(on, { now: NOON })
-    await start($)
-    expect(toasts[0]).toMatch(/\/buddy reset confirm/)
-    expect((await $.command.run(run('restore'))).text).toMatch(/does not hold/)
-    expect((await $.command.run(run(`import ${exportBlob(freshSave([7, 7, 7, 7]))}`))).text).toMatch(/Restored/)
-    expect((await $.command.run(run('stats'))).text).not.toMatch(/could not be read/)
-    store.set('save', 'garbage again')
-    expect((await $.command.run(run('reset confirm'))).text).toMatch(/appeared/)
-    expect((await $.command.run(run('feed'))).text).toMatch(/Rare Candy/)
-  })
-
-  test('a corrupt save with a newer-version backup offers no restore that cannot work', async ($, on) => {
-    const store = world(on, { save: 'garbage', 'save.bak': { version: 99 } })
-    mock.clock(on, { now: NOON })
-    await start($)
-    expect(toasts[0]).toMatch(/newer version.*Update the mod.*\/buddy reset confirm/)
-    expect(store.get('save.bak')).toEqual({ version: 99 })
-    expect((await $.command.run(run('reset confirm'))).text).toMatch(/appeared/)
-  })
-
-  test('a corrupt save with a good backup: restore, as advised, works', async ($, on) => {
-    const good = freshSave([9, 9, 9, 9])
-    world(on, { save: 'garbage', 'save.bak': good })
-    mock.clock(on, { now: NOON })
-    await start($)
-    expect(toasts[0]).toMatch(/\/buddy restore/)
-    expect((await $.command.run(run('restore'))).text).toMatch(/Restored/)
-    expect((await $.command.run(run('feed'))).text).toMatch(/Rare Candy/)
-  })
-
-  test('restore swaps a valid backup in and keeps the current raw as save.bak', async ($, on) => {
-    const good = freshSave([9, 9, 9, 9])
-    const store = world(on, { save: 'garbage', 'save.bak': good })
-    mock.clock(on)
-    await start($)
-    const r = await $.command.run(run('restore'))
-    expect(r.text).toMatch(/Restored/)
-    expect(store.get('save')).toEqual(good)
-    expect(store.get('save.bak')).toBe('garbage')
-    const after = await $.command.run(run('toggle'))
-    expect(after.text).toMatch(/view/)
-  })
-
-  test('restore refuses a backup that is not a valid save', async ($, on) => {
-    const store = world(on, { save: 'garbage', 'save.bak': 'also garbage' })
-    mock.clock(on)
-    await start($)
-    const r = await $.command.run(run('restore'))
-    expect(r.text).toMatch(/backup slot does not hold/)
-    expect(store.get('save')).toBe('garbage')
-  })
-
-  test('reset over a corrupt save keeps a readable backup', async ($, on) => {
-    const good = freshSave([9, 9, 9, 9])
-    const store = world(on, { save: 'garbage', 'save.bak': good })
-    mock.clock(on)
-    await start($)
-    const r = await $.command.run(run('reset confirm'))
-    expect(store.get('save.bak')).toEqual(good)
-    expect((store.get('save') as { version: number }).version).toBe(1)
-    expect(r.text).toMatch(/backup slot keeps the backup/)
-  })
-
-  test('reset rolls a fresh save and backs up the current one', async ($, on) => {
-    const s = freshSave([1, 2, 3, 4])
-    const store = world(on, { save: s })
-    mock.clock(on)
-    await start($)
-    const r = await $.command.run(run('reset confirm'))
-    expect(r.text).toMatch(/previous save is in the backup slot/)
-    expect(store.get('save.bak')).toEqual(s)
-    const fresh = store.get('save') as { version: number; seed: number[] }
-    expect(fresh.version).toBe(1)
-    expect(fresh.seed).not.toEqual(s.seed)
-  })
-
-  test('reset without confirm says what would happen and changes nothing', async ($, on) => {
-    const s = freshSave([1, 2, 3, 4])
-    const store = world(on, { save: s })
-    mock.clock(on, { now: NOON })
-    await start($)
-    const r = await $.command.run(run('reset'))
-    expect(r.text).toMatch(/\/buddy reset confirm/)
-    expect(r.text).toContain(species(s.species).name)
-    expect(store.get('save')).toEqual(s)
-    expect(store.has('save.bak')).toBe(false)
-  })
-
-  test('reset confirm works once per local day', async ($, on) => {
-    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
     const clock = mock.clock(on, { now: NOON })
     await start($)
-    const first = await $.command.run(run('reset confirm'))
-    expect(first.text).toMatch(/appeared/)
-    const rolled = store.get('save') as { seed: number[]; lastResetDate: string | null }
-    expect(rolled.lastResetDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-    const second = await $.command.run(run('reset confirm'))
-    expect(second.text).toMatch(/once a day/)
-    expect((store.get('save') as { seed: number[] }).seed).toEqual(rolled.seed)
-    await clock.advance(24 * 60 * 60 * 1000)
-    const tomorrow = await $.command.run(run('reset confirm'))
-    expect(tomorrow.text).toMatch(/appeared/)
-  })
-
-  test('restore or import after a reset keeps today\'s reset, so a second reset waits for tomorrow', async ($, on) => {
-    const old = freshSave([1, 2, 3, 4])
-    const store = world(on, { save: old })
-    mock.clock(on, { now: NOON })
-    await start($)
-    await $.command.run(run('reset confirm'))
-    const today = (store.get('save') as { lastResetDate: string }).lastResetDate
-    await $.command.run(run('restore'))
-    expect((store.get('save') as { seed: number[]; lastResetDate: string | null })).toEqual({ ...old, lastResetDate: today })
-    expect((await $.command.run(run('reset confirm'))).text).toMatch(/once a day/)
-    await $.command.run(run(`import ${exportBlob(old)}`))
-    expect((store.get('save') as { lastResetDate: string | null }).lastResetDate).toBe(today)
-    expect((await $.command.run(run('reset confirm'))).text).toMatch(/once a day/)
-  })
-
-  test('a reset date after today (a clock moved back) blocks today\'s reset too', async ($, on) => {
-    world(on, { save: { ...freshSave([1, 2, 3, 4]), lastResetDate: '2999-01-01' } })
-    mock.clock(on, { now: NOON })
-    await start($)
-    expect((await $.command.run(run('reset confirm'))).text).toMatch(/once a day/)
-  })
-
-  test('reset confirm is always allowed over a corrupt save', async ($, on) => {
-    const store = world(on, { save: { ...freshSave([1, 2, 3, 4]), lastResetDate: 'not a date' } })
-    mock.clock(on, { now: NOON })
-    await start($)
-    const r = await $.command.run(run('reset confirm'))
-    expect(r.text).toMatch(/appeared/)
-    expect((store.get('save') as { version: number }).version).toBe(1)
-  })
-
-  test('a save from before lastResetDate loads and can reset', async ($, on) => {
-    const { lastResetDate: _, ...old } = freshSave([1, 2, 3, 4])
-    const store = world(on, { save: old })
-    mock.clock(on, { now: NOON })
-    await start($)
-    const stats = await $.command.run(run('stats'))
-    expect(stats.text).not.toMatch(/could not be read/)
-    const r = await $.command.run(run('reset confirm'))
-    expect(r.text).toMatch(/appeared/)
-    expect(store.get('save.bak')).toEqual({ ...old, lastResetDate: null })
+    expect(store.get(`save.damaged.${NOON}`)).toBe('garbage')
+    expect(store.get('save.bak')).toEqual(good)
+    expect((store.get('save') as { level: number }).level).toBe(1)
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]).toMatch(/could not be read; it was kept aside\. A wild .+ appeared!/)
+    expect((await $.command.run(run('feed'))).text).toMatch(/Rare Candy/)
+    await clock.advance(1000)
+    store.set('save', 'garbage again')
+    await $.command.run(run('stats'))
+    expect(store.get(`save.damaged.${NOON}`)).toBe('garbage')
+    expect(store.get(`save.damaged.${NOON + 1000}`)).toBe('garbage again')
   })
 
   test('feed once a day through the command', async ($, on) => {
@@ -284,16 +128,6 @@ describe('register', () => {
     expect(first.text).toMatch(/Rare Candy/)
     const second = await $.command.run(run('feed'))
     expect(second.text).toMatch(/already/)
-  })
-
-  test('export then import restores the same save', async ($, on) => {
-    const s = freshSave([7, 7, 7, 7])
-    const store = world(on, { save: s })
-    mock.clock(on)
-    await start($)
-    const r = await $.command.run(run(`import ${exportBlob(s)}`))
-    expect(r.text).toMatch(/Restored/)
-    expect(store.get('save')).toEqual(s)
   })
 
   test('a change another session wrote to the store survives this session\'s next command', async ($, on) => {
@@ -409,16 +243,6 @@ describe('register', () => {
     await clock.advance(EVOLVE_MS - 1000)
     expect((store.get('save') as Stored)).toMatchObject({ species: 4, evolution: { to: 5 } })
     await clock.advance(1000)
-    expect((store.get('save') as Stored)).toMatchObject({ species: 5, evolution: null })
-  })
-
-  test('an imported save that is mid-evolution finishes it', async ($, on) => {
-    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
-    const clock = mock.clock(on, { now: NOON })
-    await start($)
-    await $.command.run(run(`import ${exportBlob(charmander(16, { evolution: { to: 5 } }) as ReturnType<typeof freshSave>)}`))
-    expect((store.get('save') as Stored).evolution).toEqual({ to: 5 })
-    await clock.advance(EVOLVE_MS)
     expect((store.get('save') as Stored)).toMatchObject({ species: 5, evolution: null })
   })
 
@@ -831,29 +655,6 @@ describe('register', () => {
     expect((store.get('save') as { nickname: string | null }).nickname).toBe(null)
   })
 
-  test('import refuses a bad blob and changes nothing', async ($, on) => {
-    const s = pika()
-    const store = world(on, { save: s })
-    mock.clock(on, { now: NOON })
-    await start($)
-    expect((await $.command.run(run('import hello'))).text).toMatch(/not a pokebuddy export|damaged/)
-    expect((await $.command.run(run(`import ${exportBlob(s).slice(0, -8)}`))).text).toMatch(/damaged/)
-    expect(store.get('save')).toEqual(s)
-    expect(store.has('save.bak')).toBe(false)
-  })
-
-  test('export copies the save, or prints it when the copy fails', async ($, on) => {
-    const s = pika()
-    world(on, { save: s })
-    let isCopied = true
-    on('ui.copy', async () => ({ value: isCopied ? { isCopied: true as const } : { isCopied: false as const, reason: 'no-clipboard' as const } }))
-    mock.clock(on, { now: NOON })
-    await start($)
-    expect((await $.command.run(run('export'))).text).toBe('Save copied to the clipboard.')
-    isCopied = false
-    expect((await $.command.run(run('export'))).text).toBe(`Copy this save:\n${exportBlob(s)}`)
-  })
-
   test('only main-loop turns are handled', () => {
     expect(shouldHandleTurn({ isAborted: false })).toBe(true)
     expect(shouldHandleTurn({ agentId: 'a1', isAborted: false })).toBe(false)
@@ -864,7 +665,7 @@ describe('register', () => {
     props: { hasSurvey: false, isWorking: false, maxRows, bodyColumns: 195, scroll: { offset: 0, bodyRows: maxRows }, view: {} },
     viewport: { columns: 200, rows: 60 },
   })
-  const pika = () => ({ ...freshSave([1, 2, 3, 4]), species: 25, exp: expForLevel(species(25).growth, 5) })
+  const pika = () => ({ ...freshSave([1, 2, 3, 4]), species: 25 })
 
   test('the bubble stays through a new turn, time passing and a session start, until the next speech line', async ($, on) => {
     world(on, { save: pika() })
@@ -909,7 +710,7 @@ describe('register', () => {
           props: { hasSurvey: false, isWorking: false, maxRows, bodyColumns: columns - 5, scroll: { offset: 0, bodyRows: maxRows }, view: {} },
           viewport: { columns, rows: 50 },
         })
-        expect(await ui.find({ type: 'Text', text: /Lv5/ })).toBeDefined()
+        expect(await ui.find({ type: 'Text', text: /Lv1/ })).toBeDefined()
         await ui.unmount()
       }
     })
@@ -941,7 +742,7 @@ describe('register', () => {
     }
   })
 
-  test('the full band draws its art as an Svg with the skills beside it on desktop, half-blocks alone in the terminal', async ($, on) => {
+  test('the full band draws its art as an Svg on desktop, half-blocks in the terminal, the skills beside it on both', async ($, on) => {
     world(on, { save: { ...pika(), view: 'full' as const } })
     mock.clock(on)
     await start($)
@@ -953,7 +754,7 @@ describe('register', () => {
       })
       expect(await ui.find({ type: 'Svg' }) !== undefined).toBe(surface === 'desktop')
       expect(await ui.find({ type: 'Text', text: /▀/ }) !== undefined).toBe(surface === 'terminal')
-      expect(await ui.find({ type: 'Text', text: /DEBUGGING/ }) !== undefined).toBe(surface === 'desktop')
+      expect(await ui.find({ type: 'Text', text: /DEBUGGING/ }) !== undefined).toBe(true)
       await ui.unmount()
     }
   })

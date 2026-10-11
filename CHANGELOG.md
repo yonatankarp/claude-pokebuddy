@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0 (2026-10-11)
+
+- New Pokémon start at level 1 instead of 5. Existing buddies keep their level.
+- The terminal draws the skills beside the bubble too, when it is wide enough (about 100 columns).
+- In the desktop app the EXP and skill bars use one glyph, so every step is the same width there.
+- Removed `/buddy export`, `/buddy import`, `/buddy restore` and `/buddy reset`; they now show the help. A save that cannot be read is kept aside in the store and a new Pokémon appears in its place, instead of the buddy stopping until you run a command.
+- The README says how to update without losing your buddy: `claude plugin update`, not uninstall and reinstall, which deletes the save.
+
 ## 1.0.2 (2026-10-11)
 
 - The Claude desktop app and the editor count as a person watching: the buddy now speaks, earns EXP, logs turns and judges past sessions there. They host the session through the SDK, so it used to be treated like a headless `-p` run.

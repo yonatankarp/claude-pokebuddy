@@ -137,21 +137,25 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
   const room = columns - (2 + cellWidth(title) + (save.isShiny ? 2 : 0) + level.length + 8)
   const said = view.bubble ? ` │ “${view.bubble}”` : ''
   const inline = room < INLINE_MIN || !said ? null : said.length <= room ? said : said.slice(0, room - 1) + '…'
+  // The terminal's table hands back an Svg that draws nothing, so the surface decides, not the element.
+  const isApp = surface !== 'terminal'
+  const bar = expBar(save, 8)
+  // The app's font is proportional: the empty half is a dimmed ▰, as ▱ is a different width there.
+  const barFilled = isApp ? bar.replaceAll('▱', '') : bar
   const line = (isBubbleInline: boolean) => (
     <Box key="line" flexDirection="row">
       <Text color={typeColor} wrap="truncate-end">◓ </Text>
       <Text bold wrap="truncate-end">{title}</Text>
       {save.isShiny && <Text color="#f8d030" wrap="truncate-end"> ★</Text>}
       <Text wrap="truncate-end">{level}</Text>
-      <Text color={typeColor} wrap="truncate-end">{expBar(save, 8)}</Text>
+      <Text color={typeColor} wrap="truncate-end">{barFilled}</Text>
+      {isApp && <Text dimColor wrap="truncate-end">{'▰'.repeat(bar.length - barFilled.length)}</Text>}
       {isBubbleInline && inline && <Text dimColor wrap="truncate-end">{inline}</Text>}
     </Box>
   )
   const layout = bandLayout(view, maxRows, columns, isFullscreen)
   if (layout === null) return line(true)
   const { icon } = sp
-  // The terminal's table hands back an Svg that draws nothing, so the surface decides, not the element.
-  const isApp = surface !== 'terminal'
   const art = isApp && els.Svg
     ? <els.Svg key="svg" source={spriteSvg(icon, save.isShiny)} alt={`${sp.name} sprite`} width={icon.w * SVG_SCALE} height={icon.h * SVG_SCALE} />
     : drawRows(els, artRows(view))
@@ -169,22 +173,40 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
       <Box key="side" flexDirection="column" marginLeft={2}>
         {layout.side.lines.length > 0 && bubbleBox(els, layout.side)}
         {line(false)}
-        {isApp && skillRows(els, save, typeColor)}
       </Box>
+      {(isApp || artSize(sp).cols + 2 + Math.max(1 + layout.side.width, columns - room) + skillsWidth(save) <= columns) &&
+        skillColumns(els, save, typeColor, isApp)}
     </Box>
   )
 }
 
-/** The skills as the desktop draws them: name, a ten-step bar in the type colour, value. */
-function skillRows({ Box, Text }: BandElements, save: Save, color: string) {
-  return skillStats(save).map(k => {
-    const filled = Math.round(k.value / 10)
-    return (
-      <Box key={`k-${k.name}`} flexDirection="row">
-        <Text dimColor>{k.name.padEnd(10)}</Text>
-        <Text color={color}>{'▰'.repeat(filled) + '▱'.repeat(10 - filled)}</Text>
-        <Text>{` ${k.value}`}</Text>
+/** Columns the skills take beside the bubble: margin, names, bar, values. */
+function skillsWidth(save: Save): number {
+  return 2 + Math.max(...skillStats(save).map(k => k.name.length)) + 1 + 10 + 1 + 2
+}
+
+/**
+ * The skills beside the bubble: names, ten-step bars in the type colour, values. Three columns, not padded
+ * rows, because the desktop font is proportional and padding would not line the bars up. The terminal ends
+ * each bar in ▱ like the EXP bar; the app in a dimmed ▰, as ▱ is a different width in its font.
+ */
+function skillColumns({ Box, Text }: BandElements, save: Save, color: string, isApp: boolean) {
+  const stats = skillStats(save)
+  return (
+    <Box key="skills" flexDirection="row" marginLeft={2}>
+      <Box flexDirection="column">{stats.map(k => <Text key={k.name} dimColor>{k.name}</Text>)}</Box>
+      <Box flexDirection="column" marginLeft={1}>
+        {stats.map(k => {
+          const filled = Math.round(k.value / 10)
+          return (
+            <Box key={k.name} flexDirection="row">
+              <Text color={color}>{'▰'.repeat(filled)}</Text>
+              {isApp ? <Text dimColor>{'▰'.repeat(10 - filled)}</Text> : <Text color={color}>{'▱'.repeat(10 - filled)}</Text>}
+            </Box>
+          )
+        })}
       </Box>
-    )
-  })
+      <Box flexDirection="column" marginLeft={1}>{stats.map(k => <Text key={k.name}>{String(k.value)}</Text>)}</Box>
+    </Box>
+  )
 }

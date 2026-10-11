@@ -138,7 +138,7 @@ describe('band', () => {
     expect(hasArt(view({ bubble: null }), rows, 200, false)).toBe(true)
     expect(hasArt(view({ bubble: null }), rows - 1, 200, false)).toBe(false)
     expect(hasArt(view({ bubble: null }), rows - 1, 200, true)).toBe(true)
-    expect(texts(band(els, view(), 24, 200, false))).toContain('Lv5')
+    expect(texts(band(els, view(), 24, 200, false))).toContain('Lv1')
   })
   test('wide letters in a nickname are measured as two cells', () => {
     expect(cellWidth('ピカチュウ')).toBe(10)
@@ -146,5 +146,16 @@ describe('band', () => {
     expect(cellWidth('🔥')).toBe(2)
     const wide = { ...view({ save: { ...save, nickname: 'ピカチュウピカチュウ' }, bubble: 'hello there', showFull: false }) }
     expect(texts(band(els, wide, 1, 48, true))).not.toContain('hello there')
+  })
+  test('the app draws its bars in one glyph: ▱ is a different width in its proportional font', () => {
+    const out = texts(band(els, view({ showFull: false }), 1, 120, true, 'desktop'))
+    expect(out).toContain('▰▰▰▰▰▰▰▰')
+    expect(out).not.toContain('▱')
+    expect(texts(band(els, view({ showFull: false }), 1, 120, true))).toContain('▱')
+  })
+  test('the terminal draws the skills beside the bubble only where the row has room for them', () => {
+    expect(texts(band(els, view(), 60, 120, true))).toContain('DEBUGGING')
+    expect(texts(band(els, view(), 60, 80, true))).not.toContain('DEBUGGING')
+    expect(texts(band(els, view(), 60, 80, true, 'desktop'))).toContain('DEBUGGING')
   })
 })

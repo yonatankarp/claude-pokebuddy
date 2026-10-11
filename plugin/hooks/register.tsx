@@ -21,16 +21,8 @@ const flashAtom = atom({ plugin: 'pokebuddy', key: 'flashUntil' } as const, 0)
 const WINDOW_MS = 10 * 60 * 1000
 const READ_ONLY = 'Your pokebuddy save is from a newer version of the mod. Update the mod; nothing was changed.'
 
-/** What to say about an unreadable save, offering only what can work with the backup slot as it now is. */
-function corruptAdvice(backup: ReturnType<typeof parseSave>['kind']): string {
-  const head = 'Your pokebuddy save could not be read.'
-  if (backup === 'ok') return `${head} The backup slot holds a good save and was kept; the damaged save was left in place. Run /buddy restore to bring the backup back, or /buddy reset confirm to start over.`
-  if (backup === 'future') return `${head} The backup slot holds a save from a newer version and was kept; the damaged save was left in place. Update the mod and run /buddy restore, or run /buddy reset confirm to start over or /buddy import <export> to load an export.`
-  return `${head} The damaged save is kept in the backup slot. Run /buddy reset confirm to start over, or /buddy import <export> to load an export.`
-}
-
-/** Why the save cannot be used this session (null when it can), and whether the person was told. */
-const blocked: { reason: string | null; isToasted: boolean } = { reason: null, isToasted: false }
+/** Whether the person was told this session that their save is from a newer version. */
+const blocked = { isToasted: false }
 const randomSeed = () => Array.from(crypto.getRandomValues(new Uint32Array(4)))
 
 export function shouldHandleTurn(e: { agentId?: string; isAborted: boolean }): boolean {
@@ -64,63 +56,30 @@ function outcome(ran: ToolCallResult, id: string): Outcome {
 }
 
 /**
- * Copies `raw` to save.bak, unless `raw` is unreadable and save.bak already holds something readable:
- * an earlier good backup is never replaced by a damaged save. Returns whether it wrote.
- */
-async function backUp($: EngineInterface, raw: unknown): Promise<boolean> {
-  if (raw === undefined) return false
-  if (parseSave(raw).kind === 'corrupt') {
-    const bak = parseSave(await $.store.get('save.bak')).kind
-    if (bak !== 'empty' && bak !== 'corrupt') return false
-  }
-  await $.store.set('save.bak', raw as never)
-  return true
-}
-
-/**
- * Reads the save fresh from the store; rolls one when there is none. null when it is from a newer
- * version or unreadable: nothing is written over it, and the person is told once per session.
+ * Reads the save fresh from the store; rolls one when there is none or it cannot be read, keeping a damaged
+ * one under its own key so nothing is lost. null when it is from a newer version: nothing is written over
+ * it, and the person is told once per session.
  */
 async function loadFresh($: EngineInterface): Promise<Save | null> {
   const raw = await $.store.get('save')
   const parsed = parseSave(raw)
-  if (parsed.kind === 'ok') {
-    blocked.reason = null
-    return parsed.save
-  }
-  if (parsed.kind === 'empty') {
+  if (parsed.kind === 'ok') return parsed.save
+  if (parsed.kind === 'empty' || parsed.kind === 'corrupt') {
+    // A key per damaged save, so a second one never overwrites the first or a save.bak from an older build.
+    if (parsed.kind === 'corrupt') await $.store.set(`save.damaged.${await $.clock.now()}`, raw as never)
     const save = freshSave(randomSeed())
     await $.store.set('save', save)
-    blocked.reason = null
-    $.ui.toast(`A wild ${species(save.species).name} appeared! Type /buddy to meet it.`)
+    const name = species(save.species).name
+    $.ui.toast(parsed.kind === 'corrupt'
+      ? `Your pokebuddy save could not be read; it was kept aside. A wild ${name} appeared!`
+      : `A wild ${name} appeared! Type /buddy to meet it.`)
     return save
-  }
-  if (parsed.kind === 'future') blocked.reason = READ_ONLY
-  else {
-    await backUp($, raw)
-    blocked.reason = corruptAdvice(parseSave(await $.store.get('save.bak')).kind)
   }
   if (!blocked.isToasted) {
     blocked.isToasted = true
-    $.ui.toast(blocked.reason)
+    $.ui.toast(READ_ONLY)
   }
   return null
-}
-
-/**
- * Puts `save` in place as the live save and lifts any read-only state. The later reset date of the
- * two saves is kept, so a restore or an import cannot lift the once-a-day reset limit.
- */
-async function install($: EngineInterface, incoming: Save) {
-  const cur = parseSave(await $.store.get('save'))
-  const kept = cur.kind === 'ok' ? cur.save.lastResetDate : null
-  const save = kept !== null && (incoming.lastResetDate === null || kept > incoming.lastResetDate) ? { ...incoming, lastResetDate: kept } : incoming
-  await $.store.set('save', save)
-  await update($, saveAtom, () => save)
-  blocked.reason = null
-  blocked.isToasted = false
-  evolutionTimer.generation++
-  if (save.evolution) scheduleEvolution($)
 }
 
 /** Read fresh, change, write back, refresh the drawing copy. */
@@ -175,15 +134,9 @@ function commandIO($: EngineInterface, isInteractive: boolean): CommandIO {
     load: () => loadFresh($),
     show: async save => { await update($, saveAtom, () => save) },
     mutate: change => mutate($, change),
-    blockedText: () => blocked.reason ?? READ_ONLY,
-    readRaw: key => $.store.get(key),
-    writeRaw: (key, value) => $.store.set(key, value as never),
-    backUp: raw => backUp($, raw),
-    install: save => install($, save),
+    blockedText: () => READ_ONLY,
     quietBubble: async () => { await update($, bubbleAtom, () => null) },
-    copy: async text => (await $.ui.copy({ text })).isCopied,
     evolutionStopped: () => { evolutionTimer.generation++ },
-    randomSeed,
   }
 }
 

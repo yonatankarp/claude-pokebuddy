@@ -1,15 +1,14 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { base64Encode, fnv1a, utf8 } from '../hooks/codec'
 import { LOG_LINE_MAX, PENDING_LOG_MAX } from '../hooks/config'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
-import { exportBlob, freshSave, importBlob, parseSave } from '../hooks/state'
+import { freshSave, parseSave } from '../hooks/state'
 
 describe('save', () => {
-  test('fresh save starts at level 5 with matching EXP', () => {
+  test('fresh save starts at level 1 with no EXP', () => {
     const s = freshSave([1, 2, 3, 4])
-    expect(s.level).toBe(5)
-    expect(s.exp > 0).toBe(true)
+    expect(s.level).toBe(1)
+    expect(s.exp).toBe(0)
     expect(s.version).toBe(1)
     expect(s.view).toBe('full')
   })
@@ -22,14 +21,10 @@ describe('save', () => {
     expect(parseSave('nonsense').kind).toBe('corrupt')
     expect(parseSave({ ...s, species: 999 }).kind).toBe('corrupt')
   })
-  test('lastResetDate: missing reads as null, a date or null is kept, anything else is corrupt', () => {
+  test('the lastResetDate an older build wrote is ignored, whatever it holds', () => {
     const s = freshSave([1, 2, 3, 4])
-    expect(s.lastResetDate).toBe(null)
-    const { lastResetDate: _, ...old } = s
-    expect(parseSave(old)).toEqual({ kind: 'ok', save: { ...old, lastResetDate: null } })
     expect(parseSave({ ...s, lastResetDate: '2026-10-11' }).kind).toBe('ok')
-    expect(parseSave({ ...s, lastResetDate: 'yesterday' }).kind).toBe('corrupt')
-    expect(freshSave([1, 2, 3, 4], '2026-10-11').lastResetDate).toBe('2026-10-11')
+    expect(parseSave({ ...s, lastResetDate: 'yesterday' }).kind).toBe('ok')
   })
   test('finishedSessions: missing reads as [], a longer list keeps the newest 50, anything else is corrupt', () => {
     const s = freshSave([1, 2, 3, 4])
@@ -39,23 +34,6 @@ describe('save', () => {
     expect(parseSave({ ...s, finishedSessions: [1] }).kind).toBe('corrupt')
     const many = parseSave({ ...s, finishedSessions: Array.from({ length: 60 }, (_, i) => `s${i}`) })
     expect(many.kind === 'ok' && many.save.finishedSessions).toEqual(Array.from({ length: 50 }, (_, i) => `s${i + 10}`))
-  })
-  test('export and import round-trip; tampering is refused', () => {
-    const s = { ...freshSave([5, 6, 7, 8]), nickname: 'Sparky ⚡' }
-    const blob = exportBlob(s)
-    expect(importBlob(blob)).toEqual({ kind: 'ok', save: s })
-    const body = JSON.stringify(s)
-    const tampered = base64Encode(utf8(`${fnv1a(body)}.${body.replace('Sparky', 'Sparkz')}`))
-    const bad = importBlob(tampered)
-    expect(bad.kind).toBe('bad')
-    expect(bad.kind === 'bad' && bad.reason).toContain('checksum')
-    expect(importBlob('hello').kind).toBe('bad')
-  })
-  test('import tolerates whitespace and newlines inside the blob', () => {
-    const s = freshSave([5, 6, 7, 8])
-    const blob = exportBlob(s)
-    const wrapped = blob.replace(/(.{20})/g, '$1\n  ')
-    expect(importBlob(wrapped)).toEqual({ kind: 'ok', save: s })
   })
   const s = freshSave([1, 2, 3, 4])
   const corrupt = (patch: Record<string, unknown>) => parseSave({ ...s, ...patch }).kind
@@ -73,7 +51,7 @@ describe('save', () => {
     expect(corrupt({ evolution: { to: 0 } })).toBe('corrupt')
     expect(corrupt({ evolution: { to: 152 } })).toBe('corrupt')
     expect(corrupt({ evolution: 5 })).toBe('corrupt')
-    expect(corrupt({ species: 4, exp: expForLevel(species(4).growth, 5), evolution: { to: 5 } })).toBe('ok')
+    expect(corrupt({ species: 4, level: 5, exp: expForLevel(species(4).growth, 5), evolution: { to: 5 } })).toBe('ok')
     expect(corrupt({ cancelledAtLevel: 0 })).toBe('corrupt')
     expect(corrupt({ cancelledAtLevel: 101 })).toBe('corrupt')
   })
@@ -91,8 +69,8 @@ describe('save', () => {
   })
   test('rejects a level its EXP does not reach and EXP past the next level', () => {
     const growth = species(s.species).growth
-    expect(corrupt({ exp: expForLevel(growth, 6) })).toBe('corrupt')
-    expect(corrupt({ exp: expForLevel(growth, 6) - 1 })).toBe('ok')
+    expect(corrupt({ exp: expForLevel(growth, 2) })).toBe('corrupt')
+    expect(corrupt({ exp: expForLevel(growth, 2) - 1 })).toBe('ok')
     expect(corrupt({ level: 100, exp: expForLevel(growth, 100) })).toBe('ok')
   })
   test('an evolution in progress must be one the species has', () => {
