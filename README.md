@@ -105,6 +105,23 @@ Your save keeps the summary lines of sessions not yet scored, and the check name
 
 </details>
 
+<details><summary>What each hook does</summary>
+
+The plugin only watches: every hook passes its event on unchanged, and none blocks, rewrites or answers a prompt, a tool call or a permission check. It has no permission-check hook.
+
+| Hook | What it does |
+| --- | --- |
+| `session.start` | Registers `/buddy`, finishes an evolution a restart interrupted, and scores sessions that have ended |
+| `session.attach` | Marks the session as watched when the desktop app or the editor attaches, and scores ended sessions if that has not run yet |
+| `session.end` | Marks this session's lines for scoring at the next start |
+| `prompt.submit` | Counts the prompt for EXP (not slash commands) and redraws a save another session wrote |
+| `tool.call` | Reads the finished call (the tool, its command or file path, whether it failed, and its output) to spot commits, pushes, PRs, config edits and checks; only short check names and config file names reach the save |
+| `turn.complete` | Adds up the turn's EXP, logs a one-line summary and asks the speech model for a reaction |
+| `command.run` | Answers `/buddy` |
+| `ui.render` | Draws the band above the prompt |
+
+</details>
+
 ## Your save
 
 It lives in your Claude Code config folder, in `plugins/store/`. Updating the plugin keeps it.

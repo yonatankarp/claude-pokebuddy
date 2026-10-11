@@ -255,17 +255,15 @@ describe('register', () => {
     expect((store.get('save') as Stored)).toMatchObject({ species: 12, evolution: null })
   })
 
-  /** A loop where the calls named in `failing` fail, and the permission check denies those in `denied`. */
-  function checks(on: On, failing: string[], denied: string[] = []) {
+  /** A loop where the calls named in `failing` fail. */
+  function checks(on: On, failing: string[]) {
     on('prompt.submit', async (_$, e) => ({ text: e.text }))
-    on('tool.check', async (_$, e) => ({ decision: denied.includes(String(e.tool_use_id)) ? 'deny' as const : 'allow' as const }))
     on('tool.call', async (_$, e) => failing.includes(e.tool_use_id)
       ? { result: 'Error: Exit code 1', text: 'Exit code 1', isError: true as const }
       : { result: 'ok', text: 'ok' })
     on('turn.complete', async (_$, e) => ({ text: e.answer }))
   }
   const npmTest = async ($: Engine, id: string) => {
-    await $.tool.check({ tool: 'Bash', input: { command: 'npm test' }, tool_use_id: id })
     await $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: id })
   }
 
@@ -279,18 +277,6 @@ describe('register', () => {
     await npmTest($, 'green')
     await endTurn($)
     expect((store.get('save') as Stored).expBySource.green).toBe(40)
-  })
-
-  test('a check the permission check denied is no red', async ($, on) => {
-    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
-    checks(on, ['red'], ['red'])
-    mock.clock(on, { now: NOON })
-    await start($)
-    await npmTest($, 'red')
-    await endTurn($)
-    await npmTest($, 'green')
-    await endTurn($)
-    expect((store.get('save') as Stored).expBySource.green).toBeUndefined()
   })
 
   test('an interrupted turn drops its red checks and keeps the rest', async ($, on) => {
