@@ -76,11 +76,6 @@ export function fitArt(sp: Species, rows: number, columns: number): Art | null {
   return null
 }
 
-/** The art to draw above the band's one-row line. */
-export function pickArt(sp: Species, maxRows: number, columns: number): Art | null {
-  return fitArt(sp, maxRows - 1, columns)
-}
-
 export const TYPE_COLOR: Record<PokemonType, string> = {
   normal: '#a8a878', fire: '#f08030', water: '#6890f0', electric: '#f8d030', grass: '#78c850', ice: '#98d8d8',
   fighting: '#c03028', poison: '#a040a0', ground: '#e0c068', flying: '#a890f0', psychic: '#f85888', bug: '#a8b820',

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import { base64Encode } from '../hooks/codec'
 import { species } from '../hooks/data/dex'
 import type { Sprite } from '../hooks/data/types'
-import { artSize, expBar, frameRows, pickArt, spriteRows, spriteSize, type Run } from '../hooks/render/sprite'
+import { artSize, expBar, fitArt, frameRows, spriteRows, spriteSize, type Run } from '../hooks/render/sprite'
 import { freshSave } from '../hooks/state'
 
 // 2x2: top row [red, transparent], bottom row [blue, red]
@@ -43,18 +43,18 @@ describe('sprite', () => {
     expect([...colours(f0)].every(c => sp.sprite.palette.includes(c!))).toBe(true)
     expect([...colours(frameRows(sp, 0, true))].every(c => sp.sprite.shiny.includes(c!))).toBe(true)
   })
-  test('art: the animated sprite at 1:1 when its frames fit above the line, else the icon, else none', () => {
+  test('art: the animated sprite at 1:1 when its frames fit, else the icon, else none', () => {
     const sp = species(6)
     const full = artSize(sp, 'sprite'), icon = artSize(sp, 'icon')
     expect(full).toEqual(spriteSize(sp.frames))
     expect(icon).toEqual(spriteSize(sp.icon))
     expect(icon.rows < full.rows && icon.cols < full.cols).toBe(true)
-    expect(pickArt(sp, full.rows + 1, full.cols)).toBe('sprite')
-    expect(pickArt(sp, full.rows, 200)).toBe('icon')
-    expect(pickArt(sp, 100, full.cols - 1)).toBe('icon')
-    expect(pickArt(sp, icon.rows + 1, icon.cols)).toBe('icon')
-    expect(pickArt(sp, icon.rows, 200)).toBe(null)
-    expect(pickArt(sp, 100, icon.cols - 1)).toBe(null)
+    expect(fitArt(sp, full.rows, full.cols)).toBe('sprite')
+    expect(fitArt(sp, full.rows - 1, 200)).toBe('icon')
+    expect(fitArt(sp, 100, full.cols - 1)).toBe('icon')
+    expect(fitArt(sp, icon.rows, icon.cols)).toBe('icon')
+    expect(fitArt(sp, icon.rows - 1, 200)).toBe(null)
+    expect(fitArt(sp, 100, icon.cols - 1)).toBe(null)
   })
   test('exp bar fills by progress through the level', () => {
     const s = freshSave([1, 2, 3, 4])
