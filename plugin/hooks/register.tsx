@@ -4,7 +4,7 @@ import { dexText, helpText, parseArgs, parseStone, statsText } from './commands'
 import { COMMAND, DENIED_MAX, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
 import { findSpecies, species } from './data/dex'
 import { applyExp, applyTurn, cancelEvolution, feed, finishEvolution, useStone, type GameEvent } from './game'
-import { judge, lineFacts, lineSession, tagLine } from './judge'
+import { FINISHED_MAX, judge, lineSession, tagLine, takeEnded } from './judge'
 import { localTime, readOffset } from './localtime'
 import { band, type BandView } from './render/band'
 import { signalsFromTool, type Outcome } from './signals'
@@ -165,15 +165,16 @@ export const register: Register = (on, options) => {
     // A reload or exit inside the evolution window drops its timer; finish it now.
     const loaded = await mutate($, s => (s.evolution ? finishEvolution(s) : { save: s }))
     if (!isInteractive) return next(e)
-    // Take the finished sessions' lines first, then score them, so no other session judges them again.
-    // This session's own lines stay for the session after it. Quiet means no model calls: they are dropped.
+    // Take the ended sessions' lines first, then score them, so no other session judges them again.
+    // A running session's lines stay, this one's included. Quiet means no model calls: they are dropped.
     const sid = await $.session.id()
+    const now = await $.clock.now()
     let taken: string[] = []
-    if (loaded && loaded.save.pendingLog.some(l => lineSession(l) !== sid)) {
+    if (loaded && (loaded.save.finishedSessions.length > 0 || takeEnded(loaded.save.pendingLog, [], sid, now).taken.length > 0)) {
       await mutate($, s => {
-        const finished = s.pendingLog.filter(l => lineSession(l) !== sid)
-        if (s.speechOn) taken = finished.map(lineFacts)
-        return { save: { ...s, pendingLog: s.pendingLog.filter(l => lineSession(l) === sid) } }
+        const ended = takeEnded(s.pendingLog, s.finishedSessions, sid, now)
+        if (s.speechOn) taken = ended.taken
+        return { save: { ...s, pendingLog: ended.log, finishedSessions: [] } }
       })
     }
     if (taken.length > 0) {
@@ -183,6 +184,18 @@ export const register: Register = (on, options) => {
         await mutate($, s => applyExp(s, { judge: score }))
         $.ui.toast(`Last session judged ${score}/100: +${score} EXP`)
       })
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // Marks the ending session's lines for the next session start to judge: one store write, well inside
+  // session.end's short bound, and only when this session logged a turn.
+  on('session.end', async ($, e, next) => {
+    if (isInteractive) {
+      const cur = parseSave(await $.store.get('save'))
+      if (cur.kind === 'ok' && !cur.save.finishedSessions.includes(e.sessionId) && cur.save.pendingLog.some(l => lineSession(l) === e.sessionId)) {
+        await $.store.set('save', { ...cur.save, finishedSessions: [...cur.save.finishedSessions, e.sessionId].slice(-FINISHED_MAX) })
+      }
     }
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -221,11 +234,14 @@ export const register: Register = (on, options) => {
     // A headless run (-p, the SDK) has no one watching: no EXP, no log line, no speech.
     if (!isInteractive) return result
     const sid = await $.session.id()
-    const local = localTime(await $.clock.now(), offset)
+    const now = await $.clock.now()
+    const local = localTime(now, offset)
     const facts = turnFacts(turn.signals, turn.prompts)
     const r = await mutate($, s => {
       const applied = applyTurn(s, scoreTally(turn, s.checks), local)
-      return { ...applied, save: { ...applied.save, pendingLog: [...applied.save.pendingLog, tagLine(sid, facts)].slice(-PENDING_LOG_MAX) } }
+      // A session resumed under an id that had ended is running again: its lines wait for its next end.
+      const finishedSessions = applied.save.finishedSessions.filter(id => id !== sid)
+      return { ...applied, save: { ...applied.save, finishedSessions, pendingLog: [...applied.save.pendingLog, tagLine(sid, now, facts)].slice(-PENDING_LOG_MAX) } }
     })
     if (r?.save.speechOn) {
       const save = r.save

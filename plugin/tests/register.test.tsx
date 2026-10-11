@@ -26,6 +26,7 @@ function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
   on('store.set', async (_$, e) => { store.set(e.key, copy(e.value)); return { value: undefined } })
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('session.id', async () => ({ value: sid }))
+  on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
   on('model.complete', async (_$, e) => {
     modelCalls.push(e.prompt)
     return { value: { isAnswered: true as const, text: modelReply, usage } }
@@ -60,6 +61,8 @@ const run = (args: string) => ({
 
 /** The kit does not start a session on its own: raise `session.start` as a session opening does. */
 const start = ($: Engine, isInteractive = true) => $.session.start({ cwd: '/', surface: isInteractive ? 'terminal' : null, isInteractive })
+const end = ($: Engine, sessionId = 'S1') => $.session.end({ reason: 'prompt_input_exit', sessionId, resume: { id: sessionId } })
+const HOUR = 60 * 60 * 1000
 
 describe('register', () => {
   test('first session rolls and stores a save', async ($, on) => {
@@ -477,7 +480,7 @@ describe('register', () => {
     await start($)
     await prompt($)
     await endTurn($)
-    expect((store.get('save') as Stored).pendingLog).toEqual(['S1\t1 prompt'])
+    expect((store.get('save') as Stored).pendingLog).toEqual([`S1\t${NOON}\t1 prompt`])
   })
 
   test('session start judges other sessions\' lines once and keeps its own', async ($, on) => {
@@ -497,6 +500,79 @@ describe('register', () => {
     await clock.advance(1)
     expect(modelCalls).toHaveLength(1)
     expect((store.get('save') as Stored).expBySource.judge).toBe(42)
+  })
+
+  test('session start leaves a running session\'s lines alone', async ($, on) => {
+    const s = { ...freshSave([1, 2, 3, 4]), pendingLog: [`LIVE\t${NOON - HOUR}\t1 commit`] }
+    const store = world(on, { save: s })
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(0)
+    expect((store.get('save') as Stored).pendingLog).toEqual(s.pendingLog)
+  })
+
+  test('session end marks the session ended, and the next start judges it once', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await prompt($)
+    await endTurn($)
+    await clock.advance(1)
+    await end($)
+    expect((store.get('save') as { finishedSessions: string[] }).finishedSessions).toEqual(['S1'])
+    modelCalls = []
+    const saved = store.get('save') as Stored & { finishedSessions: string[] }
+    store.set('save', { ...saved, finishedSessions: ['A'], pendingLog: [`A\t${NOON}\t1 commit`, `B\t${NOON}\t1 push`] })
+    await start($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(1)
+    expect(modelCalls[0]).toContain('- 1 commit')
+    expect(modelCalls[0]).not.toContain('1 push')
+    const after = store.get('save') as Stored & { finishedSessions: string[] }
+    expect(after.pendingLog).toEqual([`B\t${NOON}\t1 push`])
+    expect(after.finishedSessions).toEqual([])
+  })
+
+  test('session end without a logged turn writes nothing', async ($, on) => {
+    const s = freshSave([1, 2, 3, 4])
+    const store = world(on, { save: s })
+    mock.clock(on, { now: NOON })
+    await start($)
+    const before = copy(store.get('save'))
+    await end($)
+    expect(store.get('save')).toEqual(before)
+  })
+
+  test('a session that never ended is judged once its last line is a day old', async ($, on) => {
+    const s = { ...freshSave([1, 2, 3, 4]), pendingLog: [`GONE\t${NOON - 30 * HOUR}\t1 commit`, `GONE\t${NOON - 23 * HOUR}\t1 push`] }
+    const store = world(on, { save: s })
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(0)
+    await clock.advance(2 * HOUR)
+    await start($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(1)
+    expect(modelCalls[0]).toContain('- 1 commit')
+    expect(modelCalls[0]).toContain('- 1 push')
+    expect((store.get('save') as Stored).pendingLog).toEqual([])
+  })
+
+  test('a resumed session that had ended is running again', async ($, on) => {
+    const store = world(on, { save: { ...freshSave([1, 2, 3, 4]), finishedSessions: ['S1'], pendingLog: [`S1\t${NOON}\t1 commit`] } })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await clock.advance(1)
+    expect(modelCalls).toHaveLength(0)
+    await prompt($)
+    await endTurn($)
+    const after = store.get('save') as Stored & { finishedSessions: string[] }
+    expect(after.finishedSessions).toEqual([])
+    expect(after.pendingLog).toHaveLength(2)
   })
 
   test('a reload of the same session judges nothing', async ($, on) => {
@@ -519,7 +595,7 @@ describe('register', () => {
     await endTurn($)
     await clock.advance(1)
     expect(modelCalls).toHaveLength(0)
-    expect((store.get('save') as Stored).pendingLog).toEqual(['S1\t1 prompt'])
+    expect((store.get('save') as Stored).pendingLog).toEqual([`S1\t${NOON}\t1 prompt`])
   })
 
   test('a headless run earns nothing, speaks not and leaves the log alone', async ($, on) => {

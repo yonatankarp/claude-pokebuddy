@@ -3,7 +3,7 @@ import { base64Decode, base64Encode, fnv1a, fromUtf8, utf8 } from './codec'
 import { CHECKS_MAX, PENDING_LOG_MAX } from './config'
 import { STONES } from './data/types'
 import { expForLevel } from './exp'
-import { normaliseLine } from './judge'
+import { FINISHED_MAX, normaliseLine } from './judge'
 import { rekeyCheck } from './signals'
 import { species } from './data/dex'
 import { PERSONALITIES, rollFrom } from './roll'
@@ -22,7 +22,7 @@ export function freshSave(seed: number[], lastResetDate: string | null = null): 
     nickname: null, level: START_LEVEL, exp, lifetimeExp: 0, expBySource: {}, bag: {},
     counters: { greens: 0, commits: 0, configEdits: 0, feedRun: 0 }, checks: {},
     lastMoonDate: null, feed: { lastDate: null }, pendingLog: [], speechOn: true, view: 'full',
-    evolution: null, cancelledAtLevel: null, lastResetDate,
+    evolution: null, cancelledAtLevel: null, lastResetDate, finishedSessions: [],
   }
 }
 
@@ -36,7 +36,7 @@ const COUNTERS = ['greens', 'commits', 'configEdits', 'feedRun']
 /**
  * The shape version 1 promises. Unknown keys inside expBySource and bag are ignored (kept, never read),
  * so a point release may add a source or an item without old builds calling the save corrupt.
- * lastResetDate came later and is optional: a save without it reads as null.
+ * lastResetDate and finishedSessions came later and are optional: a save without them reads as null and [].
  * Any other change to the shape needs a version bump.
  */
 function validSave(raw: Record<string, unknown>): boolean {
@@ -59,6 +59,7 @@ function validSave(raw: Record<string, unknown>): boolean {
   if (raw.evolution !== null && !(isObj(raw.evolution) && isInt(raw.evolution.to, 1, 151))) return false
   if (raw.cancelledAtLevel !== null && !isInt(raw.cancelledAtLevel, 1, 100)) return false
   if (raw.lastResetDate !== undefined && !isDate(raw.lastResetDate)) return false
+  if (raw.finishedSessions !== undefined && !(Array.isArray(raw.finishedSessions) && raw.finishedSessions.length <= FINISHED_MAX && raw.finishedSessions.every(x => typeof x === 'string'))) return false
   return true
 }
 
@@ -73,7 +74,8 @@ export function parseSave(raw: unknown):
 /**
  * Older builds keyed checks by the whole command and logged it whole: both are cut down to check keys
  * (two old keys that become one keep the newer place), and each log line to LOG_LINE_MAX. More than
- * CHECKS_MAX checks keep the newest (scoreTally adds them last); a save without lastResetDate gets null.
+ * CHECKS_MAX checks keep the newest (scoreTally adds them last); a save without lastResetDate or
+ * finishedSessions gets null or [].
  */
 function normalise(save: Save): Save {
   const rekeyed: Record<string, boolean> = {}
@@ -88,6 +90,7 @@ function normalise(save: Save): Save {
     checks: Object.fromEntries(checks.slice(-CHECKS_MAX)),
     pendingLog: save.pendingLog.map(normaliseLine),
     lastResetDate: save.lastResetDate ?? null,
+    finishedSessions: save.finishedSessions ?? [],
   }
 }
 

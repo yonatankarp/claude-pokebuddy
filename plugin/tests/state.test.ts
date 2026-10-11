@@ -31,6 +31,14 @@ describe('save', () => {
     expect(parseSave({ ...s, lastResetDate: 'yesterday' }).kind).toBe('corrupt')
     expect(freshSave([1, 2, 3, 4], '2026-10-11').lastResetDate).toBe('2026-10-11')
   })
+  test('finishedSessions: missing reads as [], a list of up to 50 ids is kept, anything else is corrupt', () => {
+    const s = freshSave([1, 2, 3, 4])
+    const { finishedSessions: _, ...old } = s
+    expect(parseSave(old)).toEqual({ kind: 'ok', save: { ...old, finishedSessions: [] } })
+    expect(parseSave({ ...s, finishedSessions: ['a', 'b'] }).kind).toBe('ok')
+    expect(parseSave({ ...s, finishedSessions: [1] }).kind).toBe('corrupt')
+    expect(parseSave({ ...s, finishedSessions: Array(51).fill('a') }).kind).toBe('corrupt')
+  })
   test('export and import round-trip; tampering is refused', () => {
     const s = { ...freshSave([5, 6, 7, 8]), nickname: 'Sparky ⚡' }
     const blob = exportBlob(s)
