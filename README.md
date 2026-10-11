@@ -28,6 +28,7 @@ The command is `/buddy`. In some contexts Claude Code shows it namespaced as `/p
 | `/buddy use <stone>` | Evolve with a stone |
 | `/buddy stop` | Cancel an evolution in progress |
 | `/buddy toggle` | Full view or compact line |
+| `/buddy pane` | Open a pane that shows your Pokémon animated |
 | `/buddy quiet` | Speech and the session judge on or off |
 | `/buddy nickname <name>` | Set a nickname (empty to clear) |
 | `/buddy export` | Copy your save to the clipboard |
@@ -35,7 +36,11 @@ The command is `/buddy`. In some contexts Claude Code shows it namespaced as `/p
 | `/buddy restore` | Swap `save.bak` back in |
 | `/buddy reset` | Roll a new Pokémon; the current save goes to `save.bak` |
 
-The full view, the default, draws the Crystal sprite above a one-line summary when the band has room, and the smaller Gen 7 menu icon when it does not, with a two-frame idle bob. The compact view is the summary line alone and never animates.
+The full view, the default, draws the Crystal sprite above a one-line summary when the band has room, and the smaller Gen 7 menu icon when it does not. The compact view is the summary line alone.
+
+The Crystal sprite moves with its own animation from Pokémon Crystal: the idle animation plays, the Pokémon rests for a moment, and it plays again. A level-up or an evolution plays the intro animation first, the one the game shows when the Pokémon appears. The icon has no frames of its own, so the icon view and the compact line stay still, and nothing redraws while they show.
+
+`/buddy pane` opens a pane, beside the conversation in fullscreen and above the prompt otherwise, with the animated sprite, its name, level, EXP bar and latest speech bubble. A pane too small for the sprite shows the still icon. Close it as any pane, from its close mark or with ctrl+x x.
 
 Saves live in the plugin's store, one per machine. `export` and `import` move a save between machines. The blob carries a 32-bit checksum that catches damage, not tampering. One backup slot, `save.bak`, keeps the previous save on `import`, `restore` and `reset`. If the save cannot be read, nothing is rerolled: it is copied to `save.bak` (unless that already holds a readable save), the buddy goes read-only and a notice says to run `/buddy restore` or `/buddy reset`.
 
@@ -55,7 +60,7 @@ Each species follows its Gen 1 growth rate. Level 100 is the cap; past it only l
 | Session judge | 0 to 100 | once per finished session |
 | `/buddy feed` | EXP to the next level, plus 10% per streak day | once per local day, streak capped at 7 |
 
-A check is a run of `gradle`, `gradlew`, `mvn`, `npm`, `pnpm`, `yarn`, `bun`, `npx`, `pytest`, `cargo`, `go`, `make`, `tsc`, `eslint`, `ruff`, `jest` or `vitest` whose first arguments include a test, build, lint, check, vet or typecheck word, such as `npm test`, `./gradlew build` or `go vet ./...`. `pytest`, `tsc`, `eslint`, `ruff`, `jest` and `vitest` count on their own. Custom scripts are not detected. Detection is conservative: a command that is piped, chained with `||` or `;`, ends in `&` or runs in the background earns no outcome-based EXP, a failure counts as red only when the check is the whole command (not after `cd` or another step), a call that was denied counts as a tool call only, and a command inside quotes does not count.
+A check is a run of `gradle`, `gradlew`, `mvn`, `npm`, `pnpm`, `yarn`, `bun`, `npx`, `pytest`, `cargo`, `go`, `make`, `tsc`, `eslint`, `ruff`, `jest` or `vitest` whose first arguments include a test, build, lint, check, vet or typecheck word, such as `npm test`, `./gradlew build` or `go vet ./...`. `pytest`, `tsc`, `eslint`, `ruff`, `jest` and `vitest` count on their own. Custom scripts are not detected. Detection is conservative: a command that is piped, chained with `||` or `;`, ends in `&` or runs in the background earns no outcome-based EXP, a failure counts as red only when the check is the whole command (not after `cd` or another step), a call that was denied (by a plugin or by the permission check) counts as a tool call only, a check that fails in a turn you interrupt does not count as red, and a command inside quotes does not count.
 
 Runs without a person at the prompt (`claude -p`, the Agent SDK) earn no EXP and make no model calls.
 
@@ -81,7 +86,7 @@ Speech uses one Haiku call per completed main turn, plus one at session start th
 
 ## Building the data
 
-The Pokédex data, with the Crystal sprites and the Gen 7 menu icons, is committed. To regenerate it from PokeAPI and the PokeAPI sprites repository:
+The Pokédex data, with the Crystal sprites, the Crystal animation frames and the Gen 7 menu icons, is committed. To regenerate it from PokeAPI, the PokeAPI sprites repository and the pret/pokecrystal disassembly:
 
 ```
 npm ci && npm run data
@@ -96,3 +101,5 @@ CI runs the script tests, the scripts type check, `claude plugin validate .` and
 ## Disclaimer
 
 Pokémon names, sprites and Pokédex text are trademarks and copyrights of Nintendo, Game Freak and The Pokémon Company. They are not covered by this licence. This is an unofficial fan project.
+
+Animations and frames from the pret/pokecrystal disassembly.
