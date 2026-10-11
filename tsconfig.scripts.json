@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "es2023", "module": "esnext", "moduleResolution": "bundler",
+    "strict": true, "noEmit": true, "skipLibCheck": true, "types": ["node"],
+    "allowImportingTsExtensions": true
+  },
+  "include": ["scripts", "hooks/data/types.ts", "hooks/codec.ts"]
+}
