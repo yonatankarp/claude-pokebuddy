@@ -1,101 +1,108 @@
-# claude-pokebuddy
+# pokebuddy
 
-A Gen 1 Pokémon buddy for Claude Code. It lives in a band above the prompt, reacts to what you do with short speech bubbles, gains EXP from real work such as prompts, commits, pushes and green test runs, and evolves when it reaches the right level or you give it a stone. You get one Pokémon per machine, rolled at random (1 in 512 are shiny), and it starts at level 5.
-
-The repository is called claude-pokebuddy because the `claude-` prefix is reserved for plugin names; the plugin itself is `pokebuddy`.
-
-## Requirements
-
-Claude Code 2.1.296 or newer. The mod API is early access and may change between releases.
+A Gen 1 Pokémon that lives above your Claude Code prompt. It reacts to each turn with a short speech bubble, earns EXP from the work you do (prompts, commits, pushes, passing tests), levels up and evolves. You get one Pokémon per machine, rolled at random, starting at level 5.
 
 ## Install
+
+You need Claude Code 2.1.296 or newer. Mods are an early access feature and may change between releases.
 
 ```
 /plugin install pokebuddy --marketplace yonatankarp/claude-pokebuddy
 ```
 
-Answer `y` to add the marketplace and pick the user scope.
+Claude Code asks whether to add the marketplace (answer `y`) and where to install it. Pick the user scope so your buddy follows you into every project.
+
+## Getting started
+
+Once installed, your Pokémon appears above the prompt. After your first turn it says something about what just happened, and the line stays in its bubble until the next turn replaces it.
+
+Type `/buddy` to see its stats. `/buddy toggle` switches between the full view with the sprite and a one-line compact view, and `/buddy feed` gives it a Rare Candy once a day for a quick boost.
+
+When there is room, the sprite is drawn with the bubble beside it and the name, level and EXP bar underneath. On a short or narrow terminal it falls back to a smaller icon, then to the one-line view.
 
 ## Commands
 
-The command is `/buddy`. In some contexts Claude Code shows it namespaced as `/pokebuddy:buddy`.
+In some places Claude Code shows the command as `/pokebuddy:buddy`.
 
-| Command | Does |
+| Command | What it does |
 | --- | --- |
-| `/buddy stats` | Your Pokémon, EXP and progress |
-| `/buddy dex [name or number]` | Pokédex entry |
+| `/buddy` or `/buddy stats` | Your Pokémon, EXP and progress |
+| `/buddy dex [name or number]` | A Pokédex entry, yours by default |
 | `/buddy feed` | A Rare Candy, once a day |
-| `/buddy use <stone>` | Evolve with a stone |
+| `/buddy use <stone>` | Evolve with a stone from your bag |
 | `/buddy stop` | Cancel an evolution in progress |
 | `/buddy toggle` | Full view or compact line |
 | `/buddy quiet` | Speech and the session judge on or off |
-| `/buddy nickname <name>` | Set a nickname (empty to clear) |
+| `/buddy nickname <name>` | Set a nickname, or clear it with no name |
 | `/buddy export` | Copy your save to the clipboard |
-| `/buddy import <blob>` | Restore a save |
-| `/buddy restore` | Swap `save.bak` back in |
-| `/buddy reset` | Say what a reset does and ask for `/buddy reset confirm` |
-| `/buddy reset confirm` | Roll a new Pokémon, once a day; the current save goes to `save.bak` |
+| `/buddy import <blob>` | Load a save you exported |
+| `/buddy restore` | Swap the backup save back in |
+| `/buddy reset` | Explain what a reset does |
+| `/buddy reset confirm` | Roll a new Pokémon, once a day |
 
-The full view, the default, draws the Crystal sprite when the band has room, and the smaller Gen 7 menu icon when it does not. Beside the art, the latest speech line sits in a rounded bubble, wrapped to at most 40 columns, with the name, level and EXP bar under it. When the band is too narrow for the bubble beside the art, the summary line goes under the art with the speech at its end, and when the band is too short for the whole line, the bubble keeps its first rows and ends in an ellipsis. The compact view is the summary line alone, speech included on terminals of about 60 columns and wider. A speech line stays until the next one replaces it or `/buddy quiet` turns speech off.
+## How your Pokémon grows
 
-A level-up or an evolution shows the full view for a few seconds, even in the compact view.
-
-Saves live in the plugin's store, one per machine. `export` and `import` move a save between machines. The blob carries a 32-bit checksum that catches damage, not tampering. One backup slot, `save.bak`, keeps the previous save on `import`, `restore` and `reset`. A reset needs `/buddy reset confirm` and works once per local day, so a stray command cannot throw your Pokémon away or reroll for a shiny. If the save cannot be read, nothing is rerolled: it is copied to `save.bak` (unless that already holds a readable save), the buddy goes read-only and a notice says to run `/buddy restore` or `/buddy reset confirm`, which is then always allowed.
-
-## How EXP works
-
-Each species follows its Gen 1 growth rate. Level 100 is the cap; past it only lifetime EXP grows.
-
-| Source | EXP | Limit |
+| You | EXP | Limit |
 | --- | --- | --- |
-| Prompt you submit (typed or through Remote Control, not a slash command) | 10 | none |
-| Tool call | 2 | 40 per turn |
-| Active time | 5 per 10 minutes | only windows that contain a prompt |
-| Config edit (`CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md` and files under `.claude/`) | 25 | once per file per turn |
-| Commit (`git commit` that succeeds, not `--dry-run`) | 30 | none |
-| Push or PR (`git push`, `gh pr create` that succeed) | 50 | none |
-| Green after red (a check fails, then the same check passes) | 40 | none |
-| Session judge | 0 to 100 | once per finished session |
-| `/buddy feed` | EXP to the next level, plus 10% per streak day | once per local day, streak capped at 7 |
+| Send a prompt (not a slash command) | 10 | none |
+| Claude uses a tool | 2 | 40 per turn |
+| Stay active | 5 per 10 minutes | only while you are sending prompts |
+| Edit `CLAUDE.md`, `AGENTS.md` or a file under `.claude/` | 25 | once per file per turn |
+| Commit | 30 | none |
+| Push or open a PR | 50 | none |
+| Fix a failing check (it fails, then passes) | 40 | none |
+| Finish a session (judged by the model) | 0 to 100 | once per session |
+| `/buddy feed` | enough for the next level, more on a streak | once a day |
 
-A check is a run of `gradle`, `gradlew`, `mvn`, `npm`, `pnpm`, `yarn`, `bun`, `npx`, `pytest`, `cargo`, `go`, `make`, `tsc`, `eslint`, `ruff`, `jest` or `vitest` whose first arguments include a test, build, lint, check, vet or typecheck word, such as `npm test`, `./gradlew build` or `go vet ./...`. `pytest`, `tsc`, `eslint`, `ruff`, `jest` and `vitest` count on their own. Custom scripts are not detected. Detection is conservative: a command that is piped, chained with `||` or `;`, ends in `&` or runs in the background earns no outcome-based EXP, a failure counts as red only when the check is the whole command (not after `cd` or another step), a call that was denied (by a plugin or by the permission check) counts as a tool call only, a check that fails in a turn you interrupt does not count as red, and a command inside quotes does not count.
+A check is a test, build, lint or type check run such as `npm test`, `./gradlew build`, `pytest` or `go vet ./...`. Runs without a person at the prompt (`claude -p`, the Agent SDK) earn nothing.
 
-Runs without a person at the prompt (`claude -p`, the Agent SDK) earn no EXP and make no model calls.
+Each species levels at its Gen 1 growth rate, up to level 100. Level evolutions follow the original games: when your Pokémon reaches the level, the band announces it and you have about 4 seconds to type `/buddy stop` if you would rather it stayed as it is. The next level-up tries again.
 
-## Evolution
-
-Level evolutions follow the Gen 1 tables. When the level is reached the band announces the evolution and flashes the old and new sprites for about 4 seconds. `/buddy stop` in that window cancels it, and the next level-up tries again.
-
-Stones go to your bag from milestones, and each threshold repeats.
+Stones collect in your bag as you reach milestones, and every milestone repeats.
 
 | Stone | Earned by |
 | --- | --- |
-| Thunder Stone | every 10 green-after-red checks |
+| Thunder Stone | every 10 fixed checks |
 | Fire Stone | every 10 commits |
 | Water Stone | every 10 config edits |
-| Leaf Stone | each 7-day feed streak |
-| Moon Stone | a turn before 5 am local time (once per night) |
+| Leaf Stone | each 7-day feeding streak |
+| Moon Stone | a turn before 5 am (once a night) |
 
-Stone evolutions only happen through `/buddy use <stone>`, so you can keep a Pikachu. Eevee evolves into the form of the stone you use. Trade evolutions (Kadabra, Machoke, Graveler, Haunter) fire on your first successful `git push` or `gh pr create` at level 36 or higher.
+A stone evolution only happens when you use the stone, so you can keep a Pikachu as long as you like, and Eevee becomes whichever form matches the stone you pick. Kadabra, Machoke, Graveler and Haunter evolve by trade: push or open a PR at level 36 or higher. One Pokémon in 512 is shiny, drawn in its alternate colours with a ★ by its name.
+
+## Settings
+
+Change these in `/config`, or under `pluginConfigs.pokebuddy` in your Claude Code settings.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `speechModel` | `haiku` | The model for speech and the session judge |
+| `speechContext` | `conversation` | `conversation` lets speech react to what you asked and what Claude answered; `facts` sends only counts of what happened |
 
 ## Cost and privacy
 
-Speech uses one Haiku call per completed main turn, plus one at session start that judges the sessions finished since the last judging. Only a short fact summary is sent: counts, each check's normalized command with its arguments (for example `npm test -- --watch=false`), and config file names. Code and prompt text are never sent. The model is the `haiku` alias by default and can be changed with the `speechModel` option. `/buddy quiet` turns off every model call: no speech and no session judge, and finished sessions are dropped unjudged.
+Your buddy makes one small model call when a turn finishes, and one when a session starts to judge the sessions that ended since the last one.
 
-## Building the data
+With `speechContext` set to `conversation`, the turn's call includes the first 300 characters of your last prompt and the first 300 characters of Claude's answer, along with a short summary of what happened. With `facts`, only the summary is sent: counts of prompts and tool calls, which checks passed or failed, and the names of config files you edited. The session judge always gets the summary alone. Prompt and answer text are never saved.
 
-The Pokédex data, with the Crystal sprites and the Gen 7 menu icons, is committed. To regenerate it from PokeAPI and the PokeAPI sprites repository:
+`/buddy quiet` stops every model call: no speech and no session judge.
+
+## Your save
+
+Your save lives on this machine, one per machine. To move it, run `/buddy export` on one machine and `/buddy import` with the copied text on the other.
+
+There is one backup slot, `save.bak`. Import, restore and reset each put the save they replace there, and `/buddy restore` swaps it back. A reset needs `/buddy reset confirm` and works once a day, so a stray command cannot throw your Pokémon away or reroll it for a shiny. If your save ever cannot be read, nothing is overwritten: your buddy goes read-only and a notice tells you to run `/buddy restore` or `/buddy reset confirm`, which is always allowed in that case.
+
+## Uninstall
 
 ```
-npm ci && npm run data
+/plugin uninstall pokebuddy
 ```
 
-`npm run check:data` re-bakes and diffs the result, so it needs the raw files that `npm run data` downloads.
+Export your save first if you might come back to it.
 
-## Contributing
+## Disclaimer and credits
 
-CI runs the script tests, the scripts type check, `claude plugin validate .` and `claude plugin test .` on Claude Code 2.1.296. It does not run `check:data` because the raw downloads are not in the repository. If `claude plugin test` turns out to need a login in CI, that step is dropped.
+Pokémon names, sprites and Pokédex text are trademarks and copyrights of Nintendo, Game Freak and The Pokémon Company and are not covered by this project's licence. This is an unofficial fan project. Pokédex data and sprites come from [PokeAPI](https://pokeapi.co) and the PokeAPI sprites repository.
 
-## Disclaimer
-
-Pokémon names, sprites and Pokédex text are trademarks and copyrights of Nintendo, Game Freak and The Pokémon Company. They are not covered by this licence. This is an unofficial fan project.
+Want to help build it? See [CONTRIBUTING.md](CONTRIBUTING.md).
