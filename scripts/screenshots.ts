@@ -146,11 +146,14 @@ export function renderScene(view: BandView, maxRows: number, columns: number): s
   return toSvg([...rows, [], prompt])
 }
 
+/** EXP behind the skills, so the bars beside the bubble show some work: each skill is the square root. */
+const SKILL_EXP = { green: 3600, commit: 1600, tool: 4900, prompt: 2500, config: 400, judge: 900 }
+
 /** A fresh save made into `id` at `level`, part way to the next level, checked by the save parser. */
 export function sceneSave(id: number, level: number, over: Partial<Save> = {}): Save {
   const growth = species(id).growth
   const lo = expForLevel(growth, level), hi = expForLevel(growth, level + 1)
-  const save: Save = { ...freshSave([1, 2, 3, 4]), species: id, level, exp: lo + Math.floor((hi - lo) * 0.6), isShiny: false, view: 'full', ...over }
+  const save: Save = { ...freshSave([1, 2, 3, 4]), species: id, level, exp: lo + Math.floor((hi - lo) * 0.6), isShiny: false, view: 'full', expBySource: SKILL_EXP, ...over }
   const parsed = parseSave(JSON.parse(JSON.stringify(save)))
   if (parsed.kind !== 'ok') throw new Error(`scene save for #${id} does not validate`)
   return parsed.save

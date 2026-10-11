@@ -2,7 +2,7 @@
 
 ![pokebuddy above the Claude Code prompt](docs/images/full.svg)
 
-A Gen 1 Pokémon lives above your Claude Code prompt, reacts to each turn in a little speech bubble and grows from the work you do. You get one per Claude Code config folder, rolled at random the first time it runs, starting at level 5.
+A Gen 1 Pokémon lives above your Claude Code prompt, reacts to each turn in a little speech bubble and grows from the work you do. You get one per Claude Code config folder, rolled at random the first time it runs, starting at level 1.
 
 ## Install
 
@@ -11,6 +11,8 @@ A Gen 1 Pokémon lives above your Claude Code prompt, reacts to each turn in a l
 ```
 
 It is active at once. Ignore any "2 userConfig options not yet set" note: both settings have defaults. Needs Claude Code 2.1.296 or newer.
+
+To update, run `claude plugin update pokebuddy@pokebuddy` and restart Claude Code. Don't uninstall and reinstall to update: uninstalling deletes your save.
 
 ## Quick start
 
@@ -26,7 +28,7 @@ In some places Claude Code shows the command as `/pokebuddy:buddy`.
 
 | Command | What it does |
 | --- | --- |
-| `/buddy` or `/buddy stats` | Your Pokémon, EXP and progress |
+| `/buddy` or `/buddy stats` | Your Pokémon, EXP, progress and skills |
 | `/buddy dex [name or number]` | A Pokédex entry, yours by default |
 | `/buddy feed` | A Rare Candy, once a day (not in `-p` or SDK runs) |
 | `/buddy use <stone>` | Evolve with a stone from your bag |
@@ -34,14 +36,12 @@ In some places Claude Code shows the command as `/pokebuddy:buddy`.
 | `/buddy toggle` | Full view or compact line |
 | `/buddy quiet` | Speech and the session judge on or off |
 | `/buddy nickname <name>` | Set a nickname of up to 12 characters, or clear it with no name |
-| `/buddy export` | Copy your save to the clipboard |
-| `/buddy import <blob>` | Load a save you exported |
-| `/buddy restore` | Swap the backup slot back in |
-| `/buddy reset [confirm]` | Explain a reset, or roll a new Pokémon once a day with `confirm` |
 
 ## How it grows
 
 Your Pokémon earns EXP from prompts, tool use, commits, pushes and PRs, fixing failing checks, a daily Rare Candy and a score for each finished session. It levels at its Gen 1 growth rate and evolves by level, by stone or by trade, just like the original games. One in 512 is shiny, with its alternate colours and a ★ by its name.
+
+Six skills show what kind of work it grew from, each 0 to 99: DEBUGGING (fixed checks), SHIPPING (commits, pushes and PRs), HACKING (tool use), FOCUS (prompts and active time), TINKERING (config edits) and WISDOM (session scores). Each is the square root of the EXP behind it, so your first sessions show up and the top takes real work. `/buddy stats` lists them, and the full view draws them as bars beside the bubble: always in the Claude desktop app and the editor, and in the terminal when it is wide enough (about 100 columns).
 
 <p><img src="docs/images/shiny.svg" width="49%" alt="a shiny Pikachu"> <img src="docs/images/evolving.svg" width="49%" alt="Charmander evolving at level 16"></p>
 
@@ -100,25 +100,17 @@ In an interactive session with speech on, your buddy makes at most one model cal
 
 With `conversation`, the turn's call also includes the first 300 characters of the turn's first prompt and of Claude's answer. With `facts`, that is all it sends. Scoring a session always gets the summaries alone.
 
-Your save keeps the summary lines of sessions not yet scored, and the check names it uses to spot a fix; both are part of `/buddy export`. Prompt and answer text are never saved.
+Your save keeps the summary lines of sessions not yet scored, and the check names it uses to spot a fix. Prompt and answer text are never saved.
 
 </details>
 
 ## Your save
 
-It lives in your Claude Code config folder; `/buddy export` and `/buddy import` move it, and one backup slot keeps the save they or a reset replace.
+It lives in your Claude Code config folder, in `plugins/store/`. Updating the plugin keeps it.
 
-<details><summary>Backup, recovery and uninstall</summary>
+If your save cannot be read, it is kept aside under its own name in the same file and a new Pokémon appears in its place. A save from a newer version is left alone until you update the plugin.
 
-`/buddy restore` swaps the backup slot back in; a damaged save never overwrites a good backup. A reset needs `/buddy reset confirm` and works once a day.
-
-If your save cannot be read, your buddy says so and tells you what can help: `/buddy restore` when the backup slot is good, otherwise `/buddy reset confirm` or `/buddy import`. A save from a newer version is left alone until you update the plugin.
-
-An export is a convenience, not a signature: the checksum only catches damage from copying, so import only blobs you trust.
-
-To uninstall, run `/plugin uninstall pokebuddy`, after an export if you might come back.
-
-</details>
+Uninstalling with `/plugin uninstall pokebuddy` deletes your save, and there is no way to bring it back.
 
 ## Disclaimer and credits
 

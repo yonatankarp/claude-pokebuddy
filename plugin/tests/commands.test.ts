@@ -10,8 +10,11 @@ describe('commands', () => {
     expect(parseArgs('dex #25')).toEqual({ sub: 'dex', rest: '#25' })
     expect(parseArgs('dance')).toEqual({ sub: 'help', rest: 'dance' })
   })
-  test('help says reset needs confirm', () => {
-    expect(helpText('buddy')).toContain('/buddy reset confirm')
+  test('the removed save commands are gone from help and show it instead', () => {
+    for (const sub of ['export', 'import', 'restore', 'reset']) {
+      expect(helpText('buddy')).not.toContain(`/buddy ${sub}`)
+      expect(parseArgs(`${sub} confirm`).sub).toBe('help')
+    }
   })
   test('parseStone', () => {
     expect(parseStone('thunder')).toBe('thunder-stone')
@@ -23,7 +26,7 @@ describe('commands', () => {
     const s = { ...freshSave([1, 2, 3, 4]), species: 25, bag: { 'thunder-stone': 1 } }
     const t = statsText(s, '2026-10-11')
     expect(t).toContain('PIKACHU')
-    expect(t).toContain('Lv 5')
+    expect(t).toContain('Lv 1')
     expect(t).toContain('THUNDER STONE ×1')
     expect(t).toContain('Thunder Stone 0/10 green checks')
   })
@@ -53,7 +56,7 @@ describe('commands', () => {
     expect(t).toContain('6.0 kg')
   })
   test('help names every sub-command', () => {
-    for (const sub of ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'quiet', 'nickname', 'export', 'import', 'restore', 'reset']) {
+    for (const sub of ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'quiet', 'nickname']) {
       expect(helpText('buddy')).toContain(`/buddy ${sub}`)
     }
   })

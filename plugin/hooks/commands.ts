@@ -5,10 +5,10 @@ import { TRADE_LEVEL } from './evolution'
 import { expForLevel, MAX_LEVEL } from './exp'
 import { cancelEvolution, feed, useStone, type GameEvent } from './game'
 import { localTime, previousDate } from './localtime'
-import { exportBlob, freshSave, importBlob, NICKNAME_MAX, parseSave, type Save } from './state'
+import { NICKNAME_MAX, type Save } from './state'
 import type { Source } from './tally'
 
-const SUBS = ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'quiet', 'nickname', 'export', 'import', 'restore', 'reset'] as const
+const SUBS = ['stats', 'dex', 'feed', 'use', 'stop', 'toggle', 'quiet', 'nickname'] as const
 export type Parsed = { sub: (typeof SUBS)[number] | 'help'; rest: string }
 
 export function parseArgs(args: string): Parsed {
@@ -97,10 +97,6 @@ export function helpText(command: string): string {
     `/${command} toggle: compact or full view`,
     `/${command} quiet: speech and the session judge on or off`,
     `/${command} nickname <name>: set a nickname (empty to clear)`,
-    `/${command} export: copy your save to the clipboard`,
-    `/${command} import <blob>: restore a save`,
-    `/${command} restore: swap the backup slot back in`,
-    `/${command} reset: what a reset does; /${command} reset confirm rolls a new Pokémon, once a day (the current save goes to the backup slot)`,
   ].join('\n')
 }
 
@@ -111,25 +107,17 @@ export function helpText(command: string): string {
 export type CommandIO = {
   isInteractive: boolean
   now: () => Promise<number>
-  /** The save read fresh, rolled when there is none; null when it cannot be used. */
+  /** The save read fresh, rolled when there is none or it is damaged; null when it is from a newer version. */
   load: () => Promise<Save | null>
   /** Draws `save` without writing it. */
   show: (save: Save) => Promise<void>
   /** Read fresh, change, write back, draw and announce; null when the save cannot be used. */
   mutate: <T>(change: (s: Save) => { save: Save; events?: readonly GameEvent[] } & T) => Promise<(T & { save: Save }) | null>
-  /** Why the save cannot be used. */
+  /** Why the save cannot be used: it is from a newer version. */
   blockedText: () => string
-  readRaw: (key: 'save' | 'save.bak') => Promise<unknown>
-  writeRaw: (key: 'save' | 'save.bak', value: unknown) => Promise<void>
-  /** Copies a raw save to the backup slot unless that would replace a readable backup with an unreadable save. */
-  backUp: (raw: unknown) => Promise<boolean>
-  /** Puts `save` in place as the live save. */
-  install: (save: Save) => Promise<void>
   quietBubble: () => Promise<void>
-  copy: (text: string) => Promise<boolean>
   /** The evolution in progress was stopped: its timer must do nothing. */
   evolutionStopped: () => void
-  randomSeed: () => number[]
 }
 
 /** `/buddy <args>`: the reply to show. */
@@ -192,43 +180,6 @@ export async function runCommand(io: CommandIO, args: string): Promise<string> {
       const r = await io.mutate(s => ({ save: { ...s, nickname } }))
       if (!r) return io.blockedText()
       return nickname ? `Nickname set to ${nickname}.` : 'Nickname cleared.'
-    }
-    case 'export': {
-      const s = await io.load()
-      if (!s) return io.blockedText()
-      const blob = exportBlob(s)
-      return (await io.copy(blob)) ? 'Save copied to the clipboard.' : `Copy this save:\n${blob}`
-    }
-    case 'import': {
-      const parsed = importBlob(rest)
-      if (parsed.kind === 'bad') return parsed.reason
-      const kept = await io.backUp(await io.readRaw('save'))
-      await io.install(parsed.save)
-      return `Restored ${species(parsed.save.species).name} at Lv ${parsed.save.level}.${kept ? ' Your previous save is in the backup slot.' : ''}`
-    }
-    case 'restore': {
-      const bak = parseSave(await io.readRaw('save.bak'))
-      if (bak.kind !== 'ok') return 'The backup slot does not hold a save this version can read. Nothing was changed.'
-      const current = await io.readRaw('save')
-      if (current !== undefined) await io.writeRaw('save.bak', current)
-      await io.install(bak.save)
-      return `Restored ${species(bak.save.species).name} at Lv ${bak.save.level} from the backup slot. The save it replaced is now in the backup slot.`
-    }
-    case 'reset': {
-      // Read only: an unconfirmed reset writes nothing, not even the fresh roll or the backup loadFresh makes.
-      const raw = await io.readRaw('save')
-      const cur = parseSave(raw)
-      if (rest.trim().toLowerCase() !== 'confirm') {
-        const what = cur.kind === 'ok' ? `${cur.save.nickname ?? species(cur.save.species).name} (Lv ${cur.save.level})` : 'the current save'
-        return `This rolls a new Pokémon at Lv 5 and moves ${what} to the backup slot. It works once a day. Run /buddy reset confirm to go ahead.`
-      }
-      if (cur.kind === 'ok' && cur.save.lastResetDate !== null && cur.save.lastResetDate >= local.date) {
-        return 'You already reset today. Reset works once a day; nothing was changed.'
-      }
-      const kept = await io.backUp(raw)
-      const save = freshSave(io.randomSeed(), local.date)
-      await io.install(save)
-      return `A wild ${species(save.species).name} appeared at Lv ${save.level}! ${kept ? 'Your previous save is in the backup slot.' : 'The backup slot keeps the backup it already had.'}`
     }
   }
 }

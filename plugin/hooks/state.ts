@@ -1,5 +1,4 @@
 import type { Save } from '../types'
-import { base64Decode, base64Encode, fnv1a, fromUtf8, utf8 } from './codec'
 import { CHECKS_MAX, PENDING_LOG_MAX } from './config'
 import { STONES } from './data/types'
 import { expForLevel, levelForExp } from './exp'
@@ -10,14 +9,13 @@ import { PERSONALITIES, rollFrom } from './roll'
 import { SOURCES } from './tally'
 
 export const SAVE_VERSION = 1
-export const START_LEVEL = 5
+export const START_LEVEL = 1
 /** Characters (code points, so an emoji is one) a nickname may have. */
 export const NICKNAME_MAX = 12
 
 export type { Save }
 
-/** `lastResetDate` is the day a reset rolled it, so the once-a-day limit outlives the reset. */
-export function freshSave(seed: number[], lastResetDate: string | null = null): Save {
+export function freshSave(seed: number[]): Save {
   const roll = rollFrom(seed)
   const exp = expForLevel(species(roll.species).growth, START_LEVEL)
   return {
@@ -25,7 +23,7 @@ export function freshSave(seed: number[], lastResetDate: string | null = null): 
     nickname: null, level: START_LEVEL, exp, lifetimeExp: 0, expBySource: {}, bag: {},
     counters: { greens: 0, commits: 0, configEdits: 0, feedRun: 0 }, checks: {},
     lastMoonDate: null, feed: { lastDate: null }, pendingLog: [], speechOn: true, view: 'full',
-    evolution: null, cancelledAtLevel: null, lastResetDate, finishedSessions: [],
+    evolution: null, cancelledAtLevel: null, finishedSessions: [],
   }
 }
 
@@ -38,8 +36,9 @@ const COUNTERS = ['greens', 'commits', 'configEdits', 'feedRun']
 /**
  * The shape version 1 promises. Unknown keys inside expBySource and bag are ignored (kept, never read),
  * so a point release may add a source or an item without old builds calling the save corrupt.
- * lastResetDate and finishedSessions came later and are optional: a save without them reads as null and [].
- * Any other change to the shape needs a version bump.
+ * finishedSessions came later and is optional: a save without it reads as []. Other unknown top-level keys,
+ * such as the lastResetDate older builds wrote, are ignored.
+ * Any other change to the shape needs a version bump: a build that cannot read a save sets it aside and rolls a new buddy.
  */
 function validSave(raw: Record<string, unknown>): boolean {
   if (raw.version !== 1) return false
@@ -62,7 +61,6 @@ function validSave(raw: Record<string, unknown>): boolean {
   const evolvesInto = species(raw.species as number).evolutions.map(e => e.to)
   if (raw.evolution !== null && !(isObj(raw.evolution) && evolvesInto.includes(raw.evolution.to as number))) return false
   if (raw.cancelledAtLevel !== null && !isInt(raw.cancelledAtLevel, 1, 100)) return false
-  if (raw.lastResetDate !== undefined && !isDate(raw.lastResetDate)) return false
   if (raw.finishedSessions !== undefined && !(Array.isArray(raw.finishedSessions) && raw.finishedSessions.every(x => typeof x === 'string'))) return false
   return true
 }
@@ -78,8 +76,7 @@ export function parseSave(raw: unknown):
 /**
  * Older builds keyed checks by the whole command and logged it whole: both are cut down to check keys
  * (two old keys that become one keep the newer place), and each log line to LOG_LINE_MAX. More than
- * CHECKS_MAX checks keep the newest (scoreTally adds them last); a save without lastResetDate or
- * finishedSessions gets null or [].
+ * CHECKS_MAX checks keep the newest (scoreTally adds them last); a save without finishedSessions gets [].
  */
 function normalise(save: Save): Save {
   const rekeyed: Record<string, boolean> = {}
@@ -93,27 +90,6 @@ function normalise(save: Save): Save {
     ...save,
     checks: Object.fromEntries(checks.slice(-CHECKS_MAX)),
     pendingLog: save.pendingLog.map(normaliseLine),
-    lastResetDate: save.lastResetDate ?? null,
     finishedSessions: (save.finishedSessions ?? []).slice(-FINISHED_MAX),
   }
-}
-
-/** The checksum only catches a blob damaged in copying; it signs nothing, so an import is trusted as a local game's. */
-export function exportBlob(save: Save): string {
-  const body = JSON.stringify(save)
-  return base64Encode(utf8(`${fnv1a(body)}.${body}`))
-}
-
-export function importBlob(blob: string): { kind: 'ok'; save: Save } | { kind: 'bad'; reason: string } {
-  let text: string
-  try { text = fromUtf8(base64Decode(blob.replace(/\s+/g, ''))) } catch { return { kind: 'bad', reason: 'That is not a pokebuddy export.' } }
-  const dot = text.indexOf('.')
-  const sum = text.slice(0, dot), body = text.slice(dot + 1)
-  if (dot !== 8 || fnv1a(body) !== sum) return { kind: 'bad', reason: 'The export is damaged (checksum mismatch).' }
-  let parsed: unknown
-  try { parsed = JSON.parse(body) } catch { return { kind: 'bad', reason: 'The export is damaged (not JSON).' } }
-  const r = parseSave(parsed)
-  if (r.kind === 'ok') return r
-  if (r.kind === 'future') return { kind: 'bad', reason: `The export is from a newer version (save v${r.version}). Update the mod first.` }
-  return { kind: 'bad', reason: 'The export does not hold a valid save.' }
 }
