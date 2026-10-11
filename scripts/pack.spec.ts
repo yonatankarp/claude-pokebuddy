@@ -112,3 +112,35 @@ test('clearFrames takes frame 0\'s transparency from the reference and fills onl
   assert.deepEqual(alpha(f0!), [255, 255, 255, 0])
   assert.deepEqual(alpha(f1!), [255, 255, 255, 255])
 })
+
+test('clearFrames clears frame 0\'s white art in a later frame that moved away from it, keeps it where it stayed', () => {
+  const T = [0, 0, 0, 0]
+  // Frame 0: white art (2,2) inside a black ring. Frame 1: the ring's top is gone, so the white left at
+  // (2,2) is background reached from the border, not art. Frame 2 is frame 0 again.
+  const f0 = [[W, W, W, W, W], [W, K, K, K, W], [W, K, W, K, W], [W, K, K, K, W], [W, W, W, W, W]]
+  const f1 = [[W, W, W, W, W], [W, W, W, W, W], [W, K, W, K, W], [W, K, K, K, W], [W, W, W, W, W]]
+  const ref = image([[T, T, T, T, T], [T, K, K, K, T], [T, K, W, K, T], [T, K, K, K, T], [T, T, T, T, T]])
+  const [, one, two] = clearFrames(image([...f0, ...f1, ...f0]), 5, 15, ref, 5)
+  const alpha = (f: Uint8Array, x: number, y: number) => f[(y * 5 + x) * 4 + 3]
+  assert.equal(alpha(one!, 2, 2), 0)
+  assert.equal(alpha(one!, 1, 2), 255)
+  assert.equal(alpha(two!, 2, 2), 255)
+})
+
+test('clearFrames clears the white of a dither a later frame fades into, keeps a lone new white pixel', () => {
+  const T = [0, 0, 0, 0]
+  // Frame 0: a solid black block. Frame 1 fades its bottom into a black and white checker, whose white
+  // touches the background only corner to corner. Another frame 1 opens a lone white glint instead.
+  const f0 = [[W, W, W, W, W], [W, K, K, K, W], [W, K, K, K, W], [W, K, K, K, W], [W, W, W, W, W]]
+  const ditherF1 = [[W, W, W, W, W], [W, K, K, K, W], [W, K, W, K, W], [W, W, K, W, W], [W, W, W, W, W]]
+  const ref = image([[T, T, T, T, T], [T, K, K, K, T], [T, K, K, K, T], [T, K, K, K, T], [T, T, T, T, T]])
+  const alpha = (f: Uint8Array, x: number, y: number) => f[(y * 5 + x) * 4 + 3]
+  // The checker: (2,2) is white with black on all four sides, its corners (1,3) and (3,3) white background.
+  const [, dither] = clearFrames(image([...f0, ...ditherF1]), 5, 10, ref, 5)
+  assert.equal(alpha(dither!, 2, 2), 0)
+  assert.equal(alpha(dither!, 2, 3), 255)
+  // The glint (2,2) has black on all four sides and at all four corners: it stays.
+  const glint = [[W, W, W, W, W], [W, K, K, K, W], [W, K, W, K, W], [W, K, K, K, W], [W, W, W, W, W]]
+  const [, kept] = clearFrames(image([...f0, ...glint]), 5, 10, ref, 5)
+  assert.equal(alpha(kept!, 2, 2), 255)
+})

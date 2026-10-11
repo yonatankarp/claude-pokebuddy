@@ -86,13 +86,14 @@ export function sliceFrames(rgba: Uint8Array, w: number, h: number): Uint8Array[
   return Array.from({ length: h / w }, (_, i) => rgba.slice(i * size, (i + 1) * size))
 }
 
-export type Pin = 'clear' | 'keep' | null
+export type Pin = 'clear' | 'keep' | 'loose' | null
 
 /**
  * front.png has an opaque white background. White is also a sprite colour (eyes, highlights), so only
  * the white 4-connected to the frame's border becomes transparent, as in PokeAPI's transparent sprites.
  * `fixed` pins pixels whose answer is known: `keep` stays opaque, `clear` turns transparent and spreads
- * to the unpinned white it touches.
+ * to the unpinned white it touches. A `loose` white pixel is reached corner to corner as well, as the white
+ * of a dither is.
  */
 export function clearBorderWhite(rgba: Uint8Array, w: number, h: number, fixed: (p: number) => Pin = () => null): Uint8Array {
   const out = rgba.slice()
@@ -106,7 +107,7 @@ export function clearBorderWhite(rgba: Uint8Array, w: number, h: number, fixed: 
     const p = stack.pop()!
     if (seen[p]) continue
     const pin = fixed(p)
-    if (pin === 'keep' || (pin === null && !isWhite(p))) continue
+    if (pin === 'keep' || (pin !== 'clear' && !isWhite(p))) continue
     seen[p] = 1
     out[p * 4 + 3] = 0
     const x = p % w, y = Math.floor(p / w)
@@ -114,6 +115,10 @@ export function clearBorderWhite(rgba: Uint8Array, w: number, h: number, fixed: 
     if (x < w - 1) stack.push(p + 1)
     if (y > 0) stack.push(p - w)
     if (y < h - 1) stack.push(p + w)
+    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+      const q = p + dy * w + dx
+      if (x + dx >= 0 && x + dx < w && y + dy >= 0 && y + dy < h && fixed(q) === 'loose') stack.push(q)
+    }
   }
   return out
 }
@@ -175,15 +180,24 @@ export function indexFrames(frames: readonly Uint8Array[], size: number, palette
  * The frames of a front.png strip with their background cleared. Pixels a frame shares with frame 0
  * take their transparency from the reference (PokeAPI's transparent sprite of frame 0), which knows the
  * enclosed background and the white touching the border; pixels a frame changes fall back to the fill.
+ * A white pixel whose neighbours changed falls back to the fill too: where the art moved off frame 0's
+ * white highlight, the white left behind is background, and pinning it opaque leaves a white speck.
+ * Changed white is `loose`: a frame that fades part of the art into a dither shows the background
+ * through the dither's white, which touches the rest of the background only corner to corner.
  */
 export function clearFrames(strip: Uint8Array, w: number, h: number, ref: Uint8Array, refSize: number): Uint8Array[] {
   const frames = sliceFrames(strip, w, h)
   const base = frames[0]!
   const off = alignOffset(ref, refSize, base, w)
   return frames.map(f => clearBorderWhite(f, w, w, p => {
+    const same = (q: number) => f[q * 4] === base[q * 4] && f[q * 4 + 1] === base[q * 4 + 1] && f[q * 4 + 2] === base[q * 4 + 2]
     const i = p * 4
-    if (f[i] !== base[i] || f[i + 1] !== base[i + 1] || f[i + 2] !== base[i + 2]) return null
-    const j = ((Math.floor(p / w) + off.y) * refSize + (p % w) + off.x) * 4
-    return ref[j + 3]! < 128 ? 'clear' : 'keep'
+    const isWhite = f[i] === 255 && f[i + 1] === 255 && f[i + 2] === 255
+    if (!same(p)) return isWhite ? 'loose' : null
+    const x = p % w, y = Math.floor(p / w)
+    const around = [x > 0 && p - 1, x < w - 1 && p + 1, y > 0 && p - w, y < w - 1 && p + w].filter(q => q !== false)
+    const j = ((y + off.y) * refSize + x + off.x) * 4
+    if (ref[j + 3]! < 128) return 'clear'
+    return isWhite && !around.every(same) ? null : 'keep'
   }))
 }
