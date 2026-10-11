@@ -758,6 +758,72 @@ describe('register', () => {
     await ui.unmount()
   })
 
+  test('help, and anything it does not know, lists the commands', async ($, on) => {
+    world(on, { save: freshSave([1, 2, 3, 4]) })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('help'))).text).toMatch(/\/buddy feed/)
+    expect((await $.command.run(run('dance'))).text).toMatch(/\/buddy stats/)
+    expect((await $.command.run(run('dex 25'))).text).toMatch(/#025 PIKACHU/)
+    expect((await $.command.run(run('dex nothing'))).text).toMatch(/No Gen 1 Pokémon/)
+  })
+
+  test('use: a stone the bag lacks, one the species cannot use, and one that evolves it', async ($, on) => {
+    const store = world(on, { save: { ...pika(), bag: { 'thunder-stone': 1, 'fire-stone': 1 } } })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('use'))).text).toMatch(/Which stone/)
+    expect((await $.command.run(run('use moon'))).text).toMatch(/You have no MOON STONE/)
+    expect((await $.command.run(run('use fire'))).text).toMatch(/cannot use a FIRE STONE/)
+    expect((await $.command.run(run('use thunder stone'))).text).toBe('PIKACHU evolved into RAICHU!')
+    expect(store.get('save') as Stored & { bag: Record<string, number> }).toMatchObject({ species: 26, bag: { 'thunder-stone': 0, 'fire-stone': 1 } })
+  })
+
+  test('stop with nothing evolving, toggle and quiet', async ($, on) => {
+    const store = world(on, { save: pika() })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('stop'))).text).toBe('Nothing is evolving right now.')
+    expect((await $.command.run(run('toggle'))).text).toBe('Showing the compact view.')
+    expect((await $.command.run(run('toggle'))).text).toBe('Showing the full view.')
+    expect((await $.command.run(run('quiet'))).text).toMatch(/Speech is off/)
+    expect((store.get('save') as { speechOn: boolean }).speechOn).toBe(false)
+    expect((await $.command.run(run('quiet'))).text).toBe('Speech is on.')
+  })
+
+  test('nickname sets and clears', async ($, on) => {
+    const store = world(on, { save: pika() })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('nickname Sparky'))).text).toBe('Nickname set to Sparky.')
+    expect((store.get('save') as { nickname: string | null }).nickname).toBe('Sparky')
+    expect((await $.command.run(run('nickname'))).text).toBe('Nickname cleared.')
+    expect((store.get('save') as { nickname: string | null }).nickname).toBe(null)
+  })
+
+  test('import refuses a bad blob and changes nothing', async ($, on) => {
+    const s = pika()
+    const store = world(on, { save: s })
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('import hello'))).text).toMatch(/not a pokebuddy export|damaged/)
+    expect((await $.command.run(run(`import ${exportBlob(s).slice(0, -8)}`))).text).toMatch(/damaged/)
+    expect(store.get('save')).toEqual(s)
+    expect(store.has('save.bak')).toBe(false)
+  })
+
+  test('export copies the save, or prints it when the copy fails', async ($, on) => {
+    const s = pika()
+    world(on, { save: s })
+    let isCopied = true
+    on('ui.copy', async () => ({ value: isCopied ? { isCopied: true as const } : { isCopied: false as const, reason: 'no-clipboard' as const } }))
+    mock.clock(on, { now: NOON })
+    await start($)
+    expect((await $.command.run(run('export'))).text).toBe('Save copied to the clipboard.')
+    isCopied = false
+    expect((await $.command.run(run('export'))).text).toBe(`Copy this save:\n${exportBlob(s)}`)
+  })
+
   test('only main-loop turns are handled', () => {
     expect(shouldHandleTurn({ isAborted: false })).toBe(true)
     expect(shouldHandleTurn({ agentId: 'a1', isAborted: false })).toBe(false)
