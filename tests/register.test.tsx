@@ -492,6 +492,37 @@ describe('register', () => {
     })
   }
 
+  test('the bubble stays through a new turn, redraws and a session start, until the next speech line', async ($, on) => {
+    world(on, { save: pika() })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    const shows = async (text: RegExp) => {
+      const ui = await band($)
+      const found = await ui.find({ type: 'Text', text })
+      await ui.unmount()
+      return found !== undefined
+    }
+    try {
+      await start($)
+      modelReply = 'Pika, first line'
+      await prompt($)
+      await endTurn($)
+      await clock.advance(1)
+      expect(await shows(/first line/)).toBe(true)
+      await prompt($)
+      await clock.advance(10_000)
+      await start($)
+      expect(await shows(/first line/)).toBe(true)
+      modelReply = 'Pika, second line'
+      await endTurn($)
+      await clock.advance(1)
+      expect(await shows(/second line/)).toBe(true)
+      expect(await shows(/first line/)).toBe(false)
+    } finally {
+      modelReply = '42'
+    }
+  })
+
   /**
    * `mock.clock` whose `clock.every` answers are counted: one per period the mod's timer asks for.
    * A second `clock.every` hook is refused, so the count wraps the kit's own.
