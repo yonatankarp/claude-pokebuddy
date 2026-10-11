@@ -1,6 +1,7 @@
 import type { On } from 'claude-code'
 import { describe, expect, mock, test, type Engine } from 'claude-code/testing'
 import { countsAsPrompt, shouldHandleTurn } from '../hooks/register'
+import { COMMAND, EVOLVE_MS } from '../hooks/config'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
 import { exportBlob, freshSave } from '../hooks/state'
@@ -19,8 +20,27 @@ function world(on: On, entries: Record<string, unknown> = {}) {
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('ui.toast', async () => ({ value: undefined }))
+  on('ui.invalidate', async () => ({ value: undefined }))
   return store
 }
+
+/** The model loop beneath the mod: prompts and turns answer as given; Bash fails when the command says so. */
+function loop(on: On) {
+  on('prompt.submit', async (_$, e) => ({ text: e.text }))
+  on('tool.call', async (_$, e) => {
+    const isError = e.tool === 'Bash' && String((e as { command?: unknown }).command).includes('fail')
+    return isError ? { result: 'Error: Exit code 1', text: 'Exit code 1', isError: true as const } : { result: 'ok', text: 'ok' }
+  })
+  on('turn.complete', async (_$, e) => ({ text: e.answer }))
+}
+
+const NOON = Date.UTC(2026, 9, 11, 12)
+const prompt = ($: Engine, text = 'fix it') => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
+const bash = ($: Engine, command: string) => $.tool.call({ tool: 'Bash', command })
+const endTurn = ($: Engine, agentId?: string) =>
+  $.turn.complete({ answer: 'ok', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer', ...(agentId ? { agentId } : {}) })
+
+type Stored = { expBySource: Record<string, number>; pendingLog: string[]; counters: Record<string, number>; species: number; evolution: unknown; level: number }
 
 const run = (args: string) => ({
   command: 'buddy', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 120 },
@@ -99,6 +119,70 @@ describe('register', () => {
     const after = store.get('save') as { species: number; evolution: unknown }
     expect(after.species).toBe(5)
     expect(after.evolution).toBe(null)
+  })
+
+  test('a turn scores its prompt and tool call and logs its facts', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    mock.clock(on, { now: NOON })
+    await start($)
+    await prompt($)
+    await bash($, 'ls')
+    await endTurn($)
+    const after = store.get('save') as Stored
+    expect(after.expBySource.prompt).toBe(10)
+    expect(after.expBySource.tool).toBe(2)
+    expect(after.pendingLog).toHaveLength(1)
+    await prompt($)
+    await bash($, 'ls')
+    await endTurn($, 'a1')
+    expect(store.get('save')).toEqual(after)
+  })
+
+  test('a commit in a turn earns commit EXP and counts toward the Fire Stone', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    mock.clock(on, { now: NOON })
+    await start($)
+    await prompt($)
+    await bash($, 'git commit -m x')
+    await endTurn($)
+    const after = store.get('save') as Stored
+    expect(after.expBySource.commit).toBe(30)
+    expect(after.counters.commits).toBe(1)
+  })
+
+  test('a Bash commit that fails (isError) earns no commit EXP', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    loop(on)
+    mock.clock(on, { now: NOON })
+    await start($)
+    await bash($, 'git commit -m fail')
+    await endTurn($)
+    const after = store.get('save') as Stored
+    expect(after.expBySource.commit).toBeUndefined()
+    expect(after.counters.commits).toBe(0)
+  })
+
+  test('a level-up into an evolution finishes after the evolution window', async ($, on) => {
+    const growth = species(4).growth
+    const store = world(on, { save: { ...freshSave([1, 2, 3, 4]), species: 4, level: 15, exp: expForLevel(growth, 16) - 1 } })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await prompt($)
+    await endTurn($)
+    const evolving = store.get('save') as Stored
+    expect(evolving.level).toBe(16)
+    expect(evolving.evolution).toEqual({ to: 5 })
+    await clock.advance(EVOLVE_MS)
+    const after = store.get('save') as Stored
+    expect(after.species).toBe(5)
+    expect(after.evolution).toBe(null)
+  })
+
+  test('the command name the hooks spell literally is COMMAND', () => {
+    expect(COMMAND).toBe('buddy')
   })
 
   test('slash commands and plugin prompts earn no prompt EXP', () => {
