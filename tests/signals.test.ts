@@ -70,3 +70,51 @@ describe('signalsFromTool', () => {
     expect(isConfigPath('/r/hooks/register.tsx')).toBe(false)
   })
 })
+
+describe('signalsFromTool hardening', () => {
+  test('newline separates commands and continuation is dropped', () => {
+    expect(bash('git add -A\ngit commit -m x')).toEqual(['tool'])
+    expect(bash('./gradlew test \\\n  --info')).toEqual(['tool', 'check:./gradlew test --info:true'])
+    expect(splitCommand('a\nb')).toEqual([{ tokens: ['a'], pipedOut: false }, { tokens: ['b'], pipedOut: false }])
+  })
+  test('unquoted heredoc bodies are skipped, quoted ones are not', () => {
+    expect(bash("cat > f <<'EOF'\nfoo; git push\nEOF")).toEqual(['tool'])
+    expect(bash('cat <<-EOF\n\tgit push\n\tEOF')).toEqual(['tool'])
+    expect(bash(`git commit -m "$(cat <<'EOF'\nfix: it's done\n\nCo-Authored-By: x\nEOF\n)"`)).toEqual(['tool', 'commit'])
+  })
+  test('wrappers and git global options', () => {
+    expect(bash('git -C repo commit -m x')).toEqual(['tool', 'commit'])
+    expect(bash('git -c a=b push')).toEqual(['tool', 'push'])
+    expect(bash('git --no-pager commit -m x')).toEqual(['tool', 'commit'])
+    expect(bash('command git push')).toEqual(['tool', 'push'])
+    expect(bash('(git push)')).toEqual(['tool', 'push'])
+  })
+  test('outcome attribution needs && only', () => {
+    expect(bash('./gradlew test || true')).toEqual(['tool'])
+    expect(bash('git commit -m x; git status')).toEqual(['tool'])
+    expect(bash('./gradlew test & git push')).toEqual(['tool'])
+    expect(bash('cd r && ./gradlew test', true)).toEqual(['tool', 'check:./gradlew test:false'])
+    expect(bash('npm test && git push', true)).toEqual(['tool'])
+    expect(bash('git add . && git commit -m x && git push')).toEqual(['tool', 'commit', 'push'])
+    expect(bash('git commit -m x;')).toEqual(['tool', 'commit'])
+  })
+  test('check key drops redirections', () => {
+    expect(bash('./gradlew test > /tmp/x.log 2>&1')).toEqual(['tool', 'check:./gradlew test:true'])
+    expect(bash('./gradlew test 2>/dev/null >>o.log')).toEqual(['tool', 'check:./gradlew test:true'])
+    expect(bash('npm test &> out.log < in')).toEqual(['tool', 'check:npm test:true'])
+  })
+  test('check words only look at runner and leading args', () => {
+    expect(bash('npm install --save-dev vitest')).toEqual(['tool'])
+    expect(bash('cargo install clippy')).toEqual(['tool'])
+    expect(bash('npx vitest run')).toEqual(['tool', 'check:npx vitest run:true'])
+    expect(bash('pytest -q')).toEqual(['tool', 'check:pytest -q:true'])
+    expect(bash('go test ./...')).toEqual(['tool', 'check:go test ./...:true'])
+    expect(bash('make -j4 build')).toEqual(['tool', 'check:make -j4 build:true'])
+  })
+  test('dry-run flags', () => {
+    expect(bash('git push -n')).toEqual(['tool'])
+    expect(bash('git push --dry-run origin')).toEqual(['tool'])
+    expect(bash('git commit -m x --dry-run')).toEqual(['tool'])
+    expect(bash('git commit -m --dry-run')).toEqual(['tool', 'commit'])
+  })
+})
