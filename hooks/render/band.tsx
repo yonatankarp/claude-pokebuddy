@@ -2,7 +2,7 @@ import type { Elements } from 'claude-code'
 import { species } from '../data/dex'
 import type { Save } from '../state'
 import type { Species } from '../data/types'
-import { artSize, expBar, fitArt, spriteRows, TYPE_COLOR, type Art, type Run } from './sprite'
+import { artSize, expBar, fitArt, spriteRows, TYPE_COLOR, type Run } from './sprite'
 
 /** `showFull` is the full view, by choice or for a level-up or evolution flash. */
 export type BandView = { save: Save; bubble: string | null; showFull: boolean; evolving: boolean }
@@ -11,7 +11,7 @@ export type BandElements = Pick<Elements['terminal'], 'Box' | 'Text'>
 
 /** The bubble beside the art: its width with border and padding, and its text cut into rows. */
 export type Side = { width: number; lines: string[] }
-export type Layout = { art: Art; side: Side | null }
+export type Layout = { side: Side | null }
 
 const BUBBLE_MIN = 24
 const BUBBLE_MAX = 40
@@ -53,8 +53,8 @@ function cutLines(lines: string[], max: number, width: number): string[] {
  * The bubble beside `art` in `rows` x `columns`, with `below` rows of text under the bubble; null when
  * it does not fit. The art and the bubble with its text stand side by side, so the taller sets the height.
  */
-export function sideBubble(sp: Species, art: Art, bubble: string | null, rows: number, columns: number, below: number): Side | null {
-  const size = artSize(sp, art)
+export function sideBubble(sp: Species, bubble: string | null, rows: number, columns: number, below: number): Side | null {
+  const size = artSize(sp)
   const width = Math.min(BUBBLE_MAX, columns - size.cols - SIDE_EXTRA)
   if (width < BUBBLE_MIN || size.rows > rows) return null
   if (!bubble) return below <= rows ? { width, lines: [] } : null
@@ -63,27 +63,23 @@ export function sideBubble(sp: Species, art: Art, bubble: string | null, rows: n
   return { width, lines: cutLines(wrapText(bubble, width - BUBBLE_FRAME), room, width - BUBBLE_FRAME) }
 }
 
-/** The band's full view: the sprite before the icon, each with the bubble beside it if it fits, else over the line. */
+/** The band's full view: the icon with the bubble beside it if it fits, else over the line; null is the line alone. */
 export function bandLayout(view: BandView, maxRows: number, columns: number): Layout | null {
   if (!view.showFull) return null
   const sp = species(view.save.species)
-  for (const art of ['sprite', 'icon'] as const) {
-    const side = sideBubble(sp, art, view.bubble, maxRows, columns, 1)
-    if (side) return { art, side }
-    if (fitArt(sp, maxRows - 1, columns) === art) return { art, side: null }
-  }
-  return null
+  const side = sideBubble(sp, view.bubble, maxRows, columns, 1)
+  if (side) return { side }
+  return fitArt(sp, maxRows - 1, columns) ? { side: null } : null
 }
 
-/** The art the band draws: the Crystal sprite, else the icon; null is the line alone. */
-export function bandArt(view: BandView, maxRows: number, columns: number): Art | null {
-  return bandLayout(view, maxRows, columns)?.art ?? null
+/** Whether the band draws the icon. */
+export function bandHasArt(view: BandView, maxRows: number, columns: number): boolean {
+  return bandLayout(view, maxRows, columns) !== null
 }
 
-/** The rows of `art` in the buddy's palette, shiny or not. */
-export function artRows(view: BandView, art: Art): Run[][] {
-  const sp = species(view.save.species)
-  return spriteRows(art === 'icon' ? sp.icon : sp.sprite, view.save.isShiny)
+/** The rows of the icon in the buddy's palette, shiny or not. */
+export function artRows(view: BandView): Run[][] {
+  return spriteRows(species(view.save.species).icon, view.save.isShiny)
 }
 
 export function drawRows({ Box, Text }: BandElements, rows: Run[][]) {
@@ -132,7 +128,7 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
   )
   const layout = bandLayout(view, maxRows, columns)
   if (layout === null) return line(true)
-  const art = drawRows(els, artRows(view, layout.art))
+  const art = drawRows(els, artRows(view))
   if (layout.side === null) {
     return (
       <Box flexDirection="column">

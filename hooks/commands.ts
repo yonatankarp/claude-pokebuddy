@@ -65,7 +65,7 @@ export function helpText(command: string): string {
     `/${command} feed: a Rare Candy, once a day`,
     `/${command} use <stone>: evolve with a stone`,
     `/${command} stop: cancel an evolution in progress`,
-    `/${command} toggle: compact or full sprite`,
+    `/${command} toggle: compact or full view`,
     `/${command} quiet: speech and the session judge on or off`,
     `/${command} nickname <name>: set a nickname (empty to clear)`,
     `/${command} export: copy your save to the clipboard`,

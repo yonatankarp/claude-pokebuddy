@@ -20,8 +20,8 @@ describe('generated pokedex', () => {
     expect(by(35).types).toEqual(['normal'])
     expect(by(81).types).toEqual(['electric'])
   })
-  test('every sprite has a shiny palette of the same length', () => {
-    for (const s of POKEDEX) expect(s.sprite.shiny.length).toBe(s.sprite.palette.length)
+  test('every icon has a shiny palette of the same length', () => {
+    for (const s of POKEDEX) expect(s.icon.shiny.length).toBe(s.icon.palette.length)
   })
   test('every species has a menu icon no taller than 30 pixels, with a shiny palette', () => {
     for (const s of POKEDEX) {

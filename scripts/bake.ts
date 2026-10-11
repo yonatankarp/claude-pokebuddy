@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { PNG } from 'pngjs'
 import { base64Encode } from '../hooks/codec.ts'
 import type { Growth, Species } from '../hooks/data/types.ts'
@@ -43,12 +43,6 @@ for (let id = 1; id <= 151; id++) {
     growth,
     evolvesFrom: evolvesFromId(species.evolves_from_species?.url ?? null),
     evolutions: evolutionsFrom(chain.chain, id),
-    sprite: {
-      w: indexed.w, h: indexed.h,
-      px: base64Encode(packNibbles(indexed.indexes)),
-      palette: indexed.palette,
-      shiny: crystalShiny,
-    },
     icon: {
       w: icon.w, h: icon.h,
       px: base64Encode(packNibbles(icon.indexes)),
@@ -66,9 +60,4 @@ const LIMIT = 1_000_000
 if (Buffer.byteLength(body) > LIMIT) throw new Error(`pokedex.generated.ts would be ${Buffer.byteLength(body)} bytes, over ${LIMIT}`)
 await writeFile(new URL('../hooks/data/pokedex.generated.ts', import.meta.url), body)
 
-await mkdir(new URL('./golden/', import.meta.url), { recursive: true })
-for (const id of [25, 151, 130]) {
-  const s = out[id - 1]!
-  await writeFile(new URL(`./golden/${id}.json`, import.meta.url), JSON.stringify(s.sprite, null, 2) + '\n')
-}
 console.log(`baked ${out.length} species, ${(Buffer.byteLength(body) / 1024).toFixed(0)} KB`)

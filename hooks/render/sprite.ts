@@ -50,20 +50,15 @@ export function spriteRows(sprite: Sprite, isShiny: boolean): Run[][] {
   return rows
 }
 
-/** `sprite` is the Crystal battle sprite, `icon` the smaller menu icon. */
-export type Art = 'sprite' | 'icon'
-
-export function artSize(sp: Species, art: Art) {
-  return spriteSize(art === 'sprite' ? sp.sprite : sp.icon)
+/** The menu icon's size at 1:1. */
+export function artSize(sp: Species) {
+  return spriteSize(sp.icon)
 }
 
-/** The art that fits in `rows` x `columns`, never scaled: the Crystal sprite, else the menu icon, else none. */
-export function fitArt(sp: Species, rows: number, columns: number): Art | null {
-  for (const art of ['sprite', 'icon'] as const) {
-    const size = artSize(sp, art)
-    if (size.rows <= rows && size.cols <= columns) return art
-  }
-  return null
+/** Whether the icon fits in `rows` x `columns`, never scaled. */
+export function fitArt(sp: Species, rows: number, columns: number): boolean {
+  const size = artSize(sp)
+  return size.rows <= rows && size.cols <= columns
 }
 
 export const TYPE_COLOR: Record<PokemonType, string> = {

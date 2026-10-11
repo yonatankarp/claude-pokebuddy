@@ -21,7 +21,7 @@ To try your changes in a session, start Claude Code with `--plugin-dir .` from t
 
 ## Building the data
 
-The Pokédex data, with the Crystal sprites and the Gen 7 menu icons, is committed. To regenerate it from PokeAPI and the PokeAPI sprites repository:
+The Pokédex data, with the Gen 7 menu icons, is committed. The bake also downloads the Crystal sprites, but only to derive the icons' shiny palettes; it does not emit them. To regenerate it from PokeAPI and the PokeAPI sprites repository:
 
 ```
 npm run data

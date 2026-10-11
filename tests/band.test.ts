@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { RenderElement, RenderNode } from 'claude-code'
-import { band, bandArt, type BandElements, type BandView } from '../hooks/render/band'
+import { band, bandHasArt, type BandElements, type BandView } from '../hooks/render/band'
 import { species } from '../hooks/data/dex'
 import { freshSave } from '../hooks/state'
 import { artSize } from '../hooks/render/sprite'
@@ -54,15 +54,14 @@ describe('band', () => {
   test('showFull with room draws sprite rows above the line', () => {
     expect(texts(band(els, view(), 100, 200))).toMatch(/[▀▄]/)
   })
-  test('the sprite at 1:1 when it fits, the icon when only that fits, beside the bubble or over the line', () => {
-    const sp = species(save.species)
-    const sprite = artSize(sp, 'sprite'), icon = artSize(sp, 'icon')
-    expect(bandArt(view(), 100, 200)).toBe('sprite')
-    expect(bandArt(view(), sprite.rows - 1, 200)).toBe('icon')
-    const narrow = sprite.cols + 29
-    expect(bandArt(view(), sprite.rows + 1, narrow)).toBe('sprite')
-    expect(height(band(els, view(), sprite.rows + 1, narrow))).toBe(sprite.rows + 1)
-    expect(bandArt(view(), icon.rows, icon.cols + 29)).toBe(null)
+  test('the icon at 1:1 when it fits, beside the bubble or over the line, else the line alone', () => {
+    const icon = artSize(species(save.species))
+    expect(bandHasArt(view(), 100, 200)).toBe(true)
+    expect(bandHasArt(view(), icon.rows + 1, icon.cols)).toBe(true)
+    expect(height(band(els, view(), icon.rows + 1, icon.cols + 29))).toBe(icon.rows + 1)
+    expect(bandHasArt(view(), icon.rows, icon.cols + 29)).toBe(false)
+    expect(bandHasArt(view(), 100, icon.cols - 1)).toBe(false)
+    expect(bandHasArt(view({ showFull: false }), 100, 200)).toBe(false)
   })
   test('evolving shows the old species name', () => {
     const out = texts(band(els, view({ evolving: true, showFull: false }), 1, 120))
@@ -71,8 +70,8 @@ describe('band', () => {
   })
 
   const long = 'a much longer line of speech that cannot possibly fit on one row of a forty column bubble at all'
-  const spriteCols = artSize(species(save.species), 'sprite').cols
-  const spriteRows = artSize(species(save.species), 'sprite').rows
+  const iconCols = artSize(species(save.species)).cols
+  const iconRows = artSize(species(save.species)).rows
 
   test('side by side at 120 columns: the art, a round bordered bubble with a tail, the name line under it', () => {
     const out = band(els, view(), 60, 120)
@@ -83,10 +82,10 @@ describe('band', () => {
     expect(texts(out)).toMatch(/[▀▄]/)
     expect(texts(out)).toContain(`Lv${save.level}`)
     expect(texts(out)).not.toContain('│ “')
-    expect(height(out)).toBe(spriteRows)
+    expect(height(out)).toBe(iconRows)
   })
   test('too narrow for the bubble beside the art: the art, then the line with the bubble inline', () => {
-    const out = band(els, view(), 60, spriteCols + 29)
+    const out = band(els, view(), 60, iconCols + 29)
     expect(bubbleBox(out)).toBeUndefined()
     expect(texts(out)).toMatch(/[▀▄]/)
     expect(texts(out)).toContain('│ “hello there”')
@@ -104,12 +103,10 @@ describe('band', () => {
     expect(rows.join(' ')).toBe(long)
   })
   test('a long line is cut with an ellipsis when the rows are short, and the art stays', () => {
-    const out = band(els, view({ bubble: long }), spriteRows, 120)
+    const out = band(els, view({ bubble: long }), iconRows, 120)
     expect(bubbleBox(out)).toBeDefined()
-    expect(bandArt(view({ bubble: long }), spriteRows, 120)).toBe('sprite')
-    const iconRows = artSize(species(save.species), 'icon').rows
+    expect(bandHasArt(view({ bubble: long }), iconRows, 120)).toBe(true)
     const short = band(els, view({ bubble: `${long} ${long} ${long}` }), iconRows, 120)
-    expect(bandArt(view({ bubble: long }), iconRows, 120)).toBe('icon')
     expect(texts(bubbleBox(short))).toMatch(/…$/)
     expect(height(short)).toBe(iconRows)
   })
@@ -121,16 +118,16 @@ describe('band', () => {
     }
   })
   test('the bubble shows in every layout: compact, beside the sprite, under it, beside the icon, the line alone, evolving', () => {
-    const icon = artSize(species(save.species), 'icon')
+    const icon = artSize(species(save.species))
     const layouts: [Partial<BandView>, number, number][] = [
       [{ showFull: false }, 1, 120],
       [{}, 60, 120],
-      [{}, 60, spriteCols + 29],
+      [{}, 60, iconCols + 29],
       [{}, icon.rows + 1, 120],
       [{}, 2, 120],
       [{ evolving: true }, 60, 120],
     ]
     for (const [over, maxRows, columns] of layouts) expect(texts(band(els, view(over), maxRows, columns))).toContain('hello there')
-    expect(bandArt(view(), icon.rows + 1, 120)).toBe('icon')
+    expect(bandHasArt(view(), icon.rows + 1, 120)).toBe(true)
   })
 })

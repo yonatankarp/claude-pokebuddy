@@ -16,9 +16,9 @@ Claude Code asks whether to add the marketplace (answer `y`) and where to instal
 
 Once installed, your Pokémon appears above the prompt. After your first turn it says something about what just happened, and the line stays in its bubble until the next turn replaces it.
 
-Type `/buddy` to see its stats. `/buddy toggle` switches between the full view with the sprite and a one-line compact view, and `/buddy feed` gives it a Rare Candy once a day for a quick boost.
+Type `/buddy` to see its stats. `/buddy toggle` switches between the full view with the icon and a one-line compact view, and `/buddy feed` gives it a Rare Candy once a day for a quick boost.
 
-When there is room, the sprite is drawn with the bubble beside it and the name, level and EXP bar underneath. On a short or narrow terminal it falls back to a smaller icon, then to the one-line view.
+When there is room, a small pixel icon of your Pokémon is drawn with the bubble beside it and the name, level and EXP bar underneath. On a short or narrow terminal it falls back to the one-line view.
 
 ## Commands
 
