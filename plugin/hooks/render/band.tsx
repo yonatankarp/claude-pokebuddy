@@ -1,5 +1,4 @@
 import type { Elements, RenderSurface } from 'claude-code'
-import { bandStats } from '../commands'
 import { species } from '../data/dex'
 import type { Save } from '../state'
 import type { Species } from '../data/types'
@@ -151,8 +150,7 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
   if (layout === null) return line(true)
   const { icon } = sp
   // The terminal's table hands back an Svg that draws nothing, so the surface decides, not the element.
-  const isApp = surface !== 'terminal'
-  const art = isApp && els.Svg
+  const art = surface !== 'terminal' && els.Svg
     ? <els.Svg key="svg" source={spriteSvg(icon, save.isShiny)} alt={`${sp.name} sprite`} width={icon.w * SVG_SCALE} height={icon.h * SVG_SCALE} />
     : drawRows(els, artRows(view))
   if (layout.side === null) {
@@ -169,7 +167,6 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
       <Box key="side" flexDirection="column" marginLeft={2}>
         {layout.side.lines.length > 0 && bubbleBox(els, layout.side)}
         {line(false)}
-        {isApp && bandStats(save).map((l, i) => <Text key={`s${i}`} dimColor>{l}</Text>)}
       </Box>
     </Box>
   )
