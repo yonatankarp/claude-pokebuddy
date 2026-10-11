@@ -23,6 +23,13 @@ describe('game', () => {
     expect(done.save.species).toBe(5)
     expect(done.events).toEqual([{ kind: 'evolved', from: 4, to: 5 }])
   })
+  test('finishing an evolution past the next one\'s level starts that one too', () => {
+    const r = finishEvolution(as(10, 11, { evolution: { to: 11 } })) // Caterpie at Lv 11: Metapod, then Butterfree at 10
+    expect(r.save.species).toBe(11)
+    expect(r.save.evolution).toEqual({ to: 12 })
+    expect(r.events).toEqual([{ kind: 'evolved', from: 10, to: 11 }, { kind: 'evolving', from: 11, to: 12 }])
+    expect(finishEvolution(r.save).save).toMatchObject({ species: 12, evolution: null })
+  })
   test('cancel holds for this level and retries at the next', () => {
     const r = applyExp(as(4, 15), { commit: 10000 })
     const c = cancelEvolution(r.save)

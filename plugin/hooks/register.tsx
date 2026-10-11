@@ -109,6 +109,8 @@ async function install($: EngineInterface, incoming: Save) {
   await update($, saveAtom, () => save)
   blocked.reason = null
   blocked.isToasted = false
+  evolutionTimer.generation++
+  if (save.evolution) scheduleEvolution($)
 }
 
 /** Read fresh, change, write back, refresh the drawing copy. */
@@ -134,9 +136,18 @@ async function announce($: EngineInterface, events: readonly GameEvent[], save: 
     await update($, flashAtom, () => now + FLASH_MS)
     $.clock.after(FLASH_MS + 50, () => $.ui.invalidate('ui.render'))
   }
-  if (events.some(e => e.kind === 'evolving')) {
-    $.clock.after(EVOLVE_MS, () => mutate($, s => finishEvolution(s)))
-  }
+  if (events.some(e => e.kind === 'evolving')) scheduleEvolution($)
+}
+
+/** Which evolution timer is current: a stop, a new evolution or an install makes older timers do nothing. */
+const evolutionTimer = { generation: 0 }
+
+/** Finishes the save's evolution after the window, unless it was stopped or replaced before then. */
+function scheduleEvolution($: EngineInterface) {
+  const generation = ++evolutionTimer.generation
+  $.clock.after(EVOLVE_MS, async () => {
+    if (generation === evolutionTimer.generation) await mutate($, s => finishEvolution(s))
+  })
 }
 
 /** The loader follows `$` only into this file, so the pure modules get a client that spells each call out. */
@@ -301,6 +312,7 @@ export const register: Register = (on, options) => {
       case 'stop': {
         const r = await mutate($, s => cancelEvolution(s))
         if (!r) return blockedText()
+        if (r.cancelled) evolutionTimer.generation++
         return { text: r.cancelled ? `Huh? ${species(r.save.species).name} stopped evolving!` : 'Nothing is evolving right now.' }
       }
       case 'toggle': {

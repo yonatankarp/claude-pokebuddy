@@ -383,6 +383,45 @@ describe('register', () => {
     expect(after.evolution).toBe(null)
   })
 
+  const charmander = (level: number, extra: Record<string, unknown> = {}) =>
+    ({ ...freshSave([1, 2, 3, 4]), species: 4, level, exp: expForLevel(species(4).growth, level), ...extra })
+
+  test('an evolution stopped and restarted is finished by its own timer, not the stopped one', async ($, on) => {
+    const store = world(on, { save: { ...charmander(15), exp: expForLevel(species(4).growth, 16) - 1 } })
+    loop(on)
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await prompt($)
+    await endTurn($)
+    await clock.advance(1000)
+    expect((await $.command.run(run('stop'))).text).toMatch(/stopped evolving/)
+    await $.command.run(run('feed'))
+    expect((store.get('save') as Stored)).toMatchObject({ level: 17, evolution: { to: 5 } })
+    await clock.advance(EVOLVE_MS - 1000)
+    expect((store.get('save') as Stored)).toMatchObject({ species: 4, evolution: { to: 5 } })
+    await clock.advance(1000)
+    expect((store.get('save') as Stored)).toMatchObject({ species: 5, evolution: null })
+  })
+
+  test('an imported save that is mid-evolution finishes it', async ($, on) => {
+    const store = world(on, { save: freshSave([1, 2, 3, 4]) })
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    await $.command.run(run(`import ${exportBlob(charmander(16, { evolution: { to: 5 } }) as ReturnType<typeof freshSave>)}`))
+    expect((store.get('save') as Stored).evolution).toEqual({ to: 5 })
+    await clock.advance(EVOLVE_MS)
+    expect((store.get('save') as Stored)).toMatchObject({ species: 5, evolution: null })
+  })
+
+  test('a save that jumped past two evolutions evolves twice', async ($, on) => {
+    const store = world(on, { save: { ...freshSave([1, 2, 3, 4]), species: 10, level: 11, exp: expForLevel(species(10).growth, 11), evolution: { to: 11 } } })
+    const clock = mock.clock(on, { now: NOON })
+    await start($)
+    expect((store.get('save') as Stored)).toMatchObject({ species: 11, evolution: { to: 12 } })
+    await clock.advance(EVOLVE_MS)
+    expect((store.get('save') as Stored)).toMatchObject({ species: 12, evolution: null })
+  })
+
   /** A loop where the calls named in `failing` fail, and the permission check denies those in `denied`. */
   function checks(on: On, failing: string[], denied: string[] = []) {
     on('prompt.submit', async (_$, e) => ({ text: e.text }))

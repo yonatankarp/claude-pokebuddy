@@ -46,8 +46,16 @@ function evolveTo(save: Save, to: number): Result {
   return { save: { ...save, species: to, evolution: null, cancelledAtLevel: null }, events: [{ kind: 'evolved', from, to }] }
 }
 
+/** Ends the evolution in progress; a level the new species has already passed starts its next one. */
 export function finishEvolution(save: Save): Result {
-  return save.evolution ? evolveTo(save, save.evolution.to) : { save, events: [] }
+  if (!save.evolution) return { save, events: [] }
+  const done = evolveTo(save, save.evolution.to)
+  const next = levelEvolution(done.save.species, done.save.level, null)
+  if (next === null) return done
+  return {
+    save: { ...done.save, evolution: { to: next } },
+    events: [...done.events, { kind: 'evolving', from: done.save.species, to: next }],
+  }
 }
 
 export function cancelEvolution(save: Save): { save: Save; cancelled: boolean } {
