@@ -1,6 +1,7 @@
 import type { ModelCompleteRequest, ModelCompleteResult } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
-import { judge, judgePrompt, parseScore } from '../hooks/judge'
+import { LOG_LINE_MAX } from '../hooks/config'
+import { judge, judgePrompt, parseScore, tagLine } from '../hooks/judge'
 
 const usage = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
 
@@ -17,6 +18,10 @@ describe('judge', () => {
     expect(parseScore('3 commits and 2 pushes: 80')).toBe(80)
     expect(parseScore('I would say 101')).toBe(null)
     expect(parseScore('no idea')).toBe(null)
+  })
+  test('a log line is one line and at most LOG_LINE_MAX long', () => {
+    expect(tagLine('S1', 'edited config: a\tb\nc')).toBe('S1\tedited config: a b c')
+    expect(tagLine('S1', 'x'.repeat(1000))).toHaveLength(LOG_LINE_MAX)
   })
   test('prompt lists the log', () => {
     expect(judgePrompt(['1 prompt; 1 commit', 'a quiet turn'])).toContain('- 1 prompt; 1 commit')

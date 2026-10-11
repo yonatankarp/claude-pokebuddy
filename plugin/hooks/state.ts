@@ -3,6 +3,8 @@ import { base64Decode, base64Encode, fnv1a, fromUtf8, utf8 } from './codec'
 import { CHECKS_MAX, PENDING_LOG_MAX } from './config'
 import { STONES } from './data/types'
 import { expForLevel } from './exp'
+import { normaliseLine } from './judge'
+import { rekeyCheck } from './signals'
 import { species } from './data/dex'
 import { PERSONALITIES, rollFrom } from './roll'
 
@@ -69,14 +71,22 @@ export function parseSave(raw: unknown):
 }
 
 /**
- * A save older builds wrote with more than CHECKS_MAX checks keeps the newest (scoreTally adds them last);
- * one without lastResetDate gets null.
+ * Older builds keyed checks by the whole command and logged it whole: both are cut down to check keys
+ * (two old keys that become one keep the newer place), and each log line to LOG_LINE_MAX. More than
+ * CHECKS_MAX checks keep the newest (scoreTally adds them last); a save without lastResetDate gets null.
  */
 function normalise(save: Save): Save {
-  const checks = Object.entries(save.checks)
+  const rekeyed: Record<string, boolean> = {}
+  for (const [k, v] of Object.entries(save.checks)) {
+    const key = rekeyCheck(k)
+    delete rekeyed[key]
+    rekeyed[key] = v
+  }
+  const checks = Object.entries(rekeyed)
   return {
     ...save,
-    checks: checks.length > CHECKS_MAX ? Object.fromEntries(checks.slice(-CHECKS_MAX)) : save.checks,
+    checks: Object.fromEntries(checks.slice(-CHECKS_MAX)),
+    pendingLog: save.pendingLog.map(normaliseLine),
     lastResetDate: save.lastResetDate ?? null,
   }
 }

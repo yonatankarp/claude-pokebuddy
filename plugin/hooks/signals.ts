@@ -153,6 +153,29 @@ function isCheck(seg: string[]): boolean {
   return CHECK_WORDS.test([cmd, ...words].join(' '))
 }
 
+/** The longest check key: a check is told apart by its runner and leading words, never by its arguments. */
+export const CHECK_KEY_MAX = 60
+const KEY_WORD = /^[A-Za-z0-9][\w:@+-]*$/
+
+/**
+ * What a check is saved, logged and sent as: the runner and at most two words after it, stopping at the
+ * first flag, `--`, assignment, path or anything else that is not a plain word. So `pytest -q tests/x`
+ * is `pytest` and `make test TOKEN=abc` is `make test`: no flag values, secrets or paths leave the call.
+ */
+export function checkKey(tokens: readonly string[]): string {
+  const [runner, ...rest] = tokens
+  if (!runner) return ''
+  const words: string[] = []
+  for (const t of rest) {
+    if (words.length === 2 || !KEY_WORD.test(t)) break
+    words.push(t)
+  }
+  return [runner, ...words].join(' ').slice(0, CHECK_KEY_MAX)
+}
+
+/** An older build's key (the whole normalised command) as this build keys it. */
+export const rekeyCheck = (key: string) => checkKey(key.split(/\s+/).filter(Boolean))
+
 function bashSignals(command: string, ok: boolean): Signal[] {
   const raw = splitRaw(command)
   if (raw.slice(0, -1).some(s => s.sep === '||' || s.sep === ';' || s.sep === '\n' || s.sep === '&')) return []
@@ -171,7 +194,7 @@ function bashSignals(command: string, ok: boolean): Signal[] {
     } else if (cmd === 'gh') {
       if (ok && seg[1] === 'pr' && seg[2] === 'create') out.push({ kind: 'pr' })
     } else if (isCheck(seg) && (ok || segs.length === 1)) {
-      out.push({ kind: 'check', key: seg.join(' '), ok })
+      out.push({ kind: 'check', key: checkKey(seg), ok })
     }
   }
   return out

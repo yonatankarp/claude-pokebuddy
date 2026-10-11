@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { base64Encode, fnv1a, utf8 } from '../hooks/codec'
-import { PENDING_LOG_MAX } from '../hooks/config'
+import { LOG_LINE_MAX, PENDING_LOG_MAX } from '../hooks/config'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
 import { exportBlob, freshSave, importBlob, parseSave } from '../hooks/state'
@@ -119,5 +119,17 @@ describe('save', () => {
     expect(corrupt({ feed: { lastDate: '10/11/2026' } })).toBe('corrupt')
     expect(corrupt({ feed: {} })).toBe('corrupt')
     expect(corrupt({ lastMoonDate: '2026-10-11', feed: { lastDate: '2026-10-11' } })).toBe('ok')
+  })
+  test('an older save\'s whole-command check keys load cut down, two that become one keeping the newer place', () => {
+    const raw = { ...freshSave([1, 2, 3, 4]), checks: { 'pytest --password=x': true, 'npm test': true, 'pytest -q tests/a.py': true } }
+    const r = parseSave(raw)
+    expect(r.kind === 'ok' && r.save.checks).toEqual({ 'npm test': true, pytest: true })
+    expect(r.kind === 'ok' && Object.keys(r.save.checks)).toEqual(['npm test', 'pytest'])
+  })
+  test('an older save\'s log lines load with check commands cut down and each line capped', () => {
+    const long = 'x'.repeat(LOG_LINE_MAX + 50)
+    const raw = { ...freshSave([1, 2, 3, 4]), pendingLog: ['S\t1 prompt; checks: make test TOKEN=abc failed, pytest -k s passed; edited config: CLAUDE.md', long] }
+    const r = parseSave(raw)
+    expect(r.kind === 'ok' && r.save.pendingLog).toEqual(['S\t1 prompt; checks: make test failed, pytest passed; edited config: CLAUDE.md', long.slice(0, LOG_LINE_MAX)])
   })
 })

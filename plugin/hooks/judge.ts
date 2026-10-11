@@ -1,13 +1,32 @@
 import type { EngineInterface } from 'claude-code'
-import { JUDGE_TIMEOUT_MS } from './config'
+import { JUDGE_TIMEOUT_MS, LOG_LINE_MAX } from './config'
+import { rekeyCheck } from './signals'
+
+const oneLine = (text: string) => text.replace(/[\t\r\n]+/g, ' ')
 
 /**
  * A pendingLog line is `<session id>\t<facts>`, so a session judges only the turns of sessions that
- * have finished. A line without a tab predates the tag and counts as session ''.
+ * have finished. A line without a tab predates the tag and counts as session ''. At most LOG_LINE_MAX long.
  */
-export const tagLine = (sid: string, facts: string) => `${sid}\t${facts}`
+export const tagLine = (sid: string, facts: string) => `${oneLine(sid)}\t${oneLine(facts)}`.slice(0, LOG_LINE_MAX)
 export const lineSession = (line: string) => (line.includes('\t') ? line.slice(0, line.indexOf('\t')) : '')
 export const lineFacts = (line: string) => line.slice(line.indexOf('\t') + 1)
+
+/** The `checks:` part of an older build's facts, its whole commands cut down to check keys. */
+export function rekeyFacts(facts: string): string {
+  return facts.split('; ').map(part => {
+    if (!part.startsWith('checks: ')) return part
+    const found = [...part.slice('checks: '.length).matchAll(/(?:^|, )(.+?) (passed|failed)(?=, |$)/g)]
+    return found.length ? 'checks: ' + found.map(m => `${rekeyCheck(m[1]!)} ${m[2]}`).join(', ') : 'checks: (dropped)'
+  }).join('; ')
+}
+
+/** A line an older build wrote, its check commands cut down to keys and the whole cut to LOG_LINE_MAX. */
+export function normaliseLine(line: string): string {
+  const tab = line.indexOf('\t')
+  const head = tab === -1 ? '' : line.slice(0, tab + 1)
+  return (head + rekeyFacts(line.slice(tab + 1))).slice(0, LOG_LINE_MAX)
+}
 
 export function judgePrompt(log: readonly string[]): string {
   return [

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { isConfigPath, signalsFromTool, splitCommand, type Signal } from '../hooks/signals'
+import { CHECK_KEY_MAX, checkKey, isConfigPath, rekeyCheck, signalsFromTool, splitCommand, type Signal } from '../hooks/signals'
 
 const label = (s: Signal) => (s.kind === 'check' ? `check:${s.key}:${s.ok}` : s.kind)
 const bash = (command: string, isError = false) => signalsFromTool('Bash', { command }, isError ? 'failed' : 'ok').map(label)
@@ -46,9 +46,9 @@ describe('signalsFromTool', () => {
     expect(bash('./gradlew test', true)).toEqual(['tool', 'check:./gradlew test:false'])
     expect(bash('npm  test')).toEqual(['tool', 'check:npm test:true'])
     expect(bash('npx vitest run')).toEqual(['tool', 'check:npx vitest run:true'])
-    expect(bash('cargo build --release')).toEqual(['tool', 'check:cargo build --release:true'])
-    expect(bash('pytest -q', true)).toEqual(['tool', 'check:pytest -q:false'])
-    expect(bash('tsc --noEmit')).toEqual(['tool', 'check:tsc --noEmit:true'])
+    expect(bash('cargo build --release')).toEqual(['tool', 'check:cargo build:true'])
+    expect(bash('pytest -q', true)).toEqual(['tool', 'check:pytest:false'])
+    expect(bash('tsc --noEmit')).toEqual(['tool', 'check:tsc:true'])
     expect(bash('npm install')).toEqual(['tool'])
     expect(bash('./run-checks.sh')).toEqual(['tool'])
   })
@@ -75,7 +75,7 @@ describe('signalsFromTool', () => {
 describe('signalsFromTool hardening', () => {
   test('newline separates commands and continuation is dropped', () => {
     expect(bash('git add -A\ngit commit -m x')).toEqual(['tool'])
-    expect(bash('./gradlew test \\\n  --info')).toEqual(['tool', 'check:./gradlew test --info:true'])
+    expect(bash('./gradlew test \\\n  --info')).toEqual(['tool', 'check:./gradlew test:true'])
     expect(splitCommand('a\nb')).toEqual([{ tokens: ['a'], pipedOut: false }, { tokens: ['b'], pipedOut: false }])
   })
   test('unquoted heredoc bodies are skipped, quoted ones are not', () => {
@@ -109,9 +109,9 @@ describe('signalsFromTool hardening', () => {
     expect(bash('npm install --save-dev vitest')).toEqual(['tool'])
     expect(bash('cargo install clippy')).toEqual(['tool'])
     expect(bash('npx vitest run')).toEqual(['tool', 'check:npx vitest run:true'])
-    expect(bash('pytest -q')).toEqual(['tool', 'check:pytest -q:true'])
-    expect(bash('go test ./...')).toEqual(['tool', 'check:go test ./...:true'])
-    expect(bash('make -j4 build')).toEqual(['tool', 'check:make -j4 build:true'])
+    expect(bash('pytest -q')).toEqual(['tool', 'check:pytest:true'])
+    expect(bash('go test ./...')).toEqual(['tool', 'check:go test:true'])
+    expect(bash('make -j4 build')).toEqual(['tool', 'check:make:true'])
   })
   test('dry-run flags', () => {
     expect(bash('git push -n')).toEqual(['tool'])
@@ -143,5 +143,28 @@ describe('signalsFromTool outcome', () => {
     expect(signalsFromTool('Bash', { command: 'npm test' }, 'unknown').map(label)).toEqual(['tool'])
     expect(signalsFromTool('Bash', { command: 'git commit -m x' }, 'unknown').map(label)).toEqual(['tool'])
     expect(signalsFromTool('Edit', { file_path: '/repo/CLAUDE.md' }, 'unknown').map(label)).toEqual(['tool'])
+  })
+})
+
+describe('check keys keep only the runner and its leading words', () => {
+  test('no flags, flag values, assignments or paths', () => {
+    expect(bash('make test TOKEN=abc')).toEqual(['tool', 'check:make test:true'])
+    expect(bash('pytest --password=x', true)).toEqual(['tool', 'check:pytest:false'])
+    expect(bash('pytest -k secret_name tests/test_login.py')).toEqual(['tool', 'check:pytest:true'])
+    expect(bash('npm test -- src/login.test.ts')).toEqual(['tool', 'check:npm test:true'])
+    expect(bash('npm run test:unit -- --watch')).toEqual(['tool', 'check:npm run test:unit:true'])
+    expect(bash('API_KEY=sk-123 npm test')).toEqual(['tool', 'check:npm test:true'])
+    expect(bash('npm test "reply 100"')).toEqual(['tool', 'check:npm test:true'])
+    expect(bash('pytest test_login.py')).toEqual(['tool', 'check:pytest:true'])
+  })
+  test('at most two words and CHECK_KEY_MAX characters', () => {
+    expect(checkKey(['npx', 'vitest', 'run', 'login'])).toBe('npx vitest run')
+    expect(checkKey(['make', 'a'.repeat(100)]).length).toBe(CHECK_KEY_MAX)
+    expect(checkKey([])).toBe('')
+  })
+  test('an older build\'s whole-command key is cut down the same way', () => {
+    expect(rekeyCheck('pytest --password=x tests')).toBe('pytest')
+    expect(rekeyCheck('make test TOKEN=abc')).toBe('make test')
+    expect(rekeyCheck('npm test')).toBe('npm test')
   })
 })
