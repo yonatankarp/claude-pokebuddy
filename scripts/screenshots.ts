@@ -212,6 +212,7 @@ export function scenes(): Record<string, string> {
     'desktop-dex.svg': renderDesktopPanel({ ...panelView, tab: 'dex', save: { ...bulbasaur, caught: [...bulbasaur.caught, 4, 7, 16, 19, 25] } }),
     'desktop-dex-entry.svg': renderDesktopPanel({ ...panelView, tab: 'dex', dex: { page: 0, entry: 25 }, save: { ...bulbasaur, caught: [...bulbasaur.caught, 25] } }),
     'desktop-box.svg': renderDesktopPanel({ ...panelView, tab: 'box' }),
+    'desktop-buddy.svg': renderDesktopPanel({ ...panelView, tab: 'buddy', save: { ...sceneSave(25, 11, { expBySource: SHIPPER }), bag: { 'thunder-stone': 1 } } }),
   }
 }
 

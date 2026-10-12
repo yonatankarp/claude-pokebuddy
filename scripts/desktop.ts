@@ -14,13 +14,15 @@ const els = { Box: make('Box'), Text: make('Text'), Button: make('Button'), Svg:
 
 const FONT = 13, CHAR = FONT * 0.6, LINE = 20, CELL = 8, ROW = 12, PAD = 16
 const BG = '#262624', FG = '#e8e6e3', BUTTON = '#3d3c39', PRIMARY = '#d97757', LINK = '#1f5fa8'
+// Characters that fit in `px`: the nudge keeps a width summed from these, then taken apart again in floats, from losing one.
+const fits = (px: number) => Math.floor(px / CHAR + 1e-6)
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const textOf = (n: Node): string => n.children.map(c => (typeof c === 'object' ? textOf(c as Node) : String(c))).join('')
 const none: Laid = { w: 0, h: 0, draw: () => [] }
 
 /** Words wrapped to `max` pixels; a single word longer than that is left whole. */
 function wrap(text: string, max: number): string[] {
-  const cols = Math.max(1, Math.floor(max / CHAR))
+  const cols = Math.max(1, fits(max))
   return text.split('\n').flatMap(para => {
     const lines: string[] = []
     let line = ''
@@ -35,7 +37,7 @@ function wrap(text: string, max: number): string[] {
 function text(n: Node, max: number): Laid {
   const p = n.props
   const raw = textOf(n)
-  const lines = p.wrap === 'truncate-end' ? [raw.slice(0, Math.floor(max / CHAR))] : wrap(raw, max)
+  const lines = p.wrap === 'truncate-end' ? [raw.slice(0, fits(max))] : wrap(raw, max)
   const w = Math.max(...lines.map(l => l.length)) * CHAR, h = lines.length * LINE
   const attrs = `${p.color ? ` fill="${p.color}"` : ''}${p.bold ? ' font-weight="700"' : ''}${p.underline ? ' text-decoration="underline"' : ''}${p.dimColor ? ' opacity="0.55"' : ''}`
   return {

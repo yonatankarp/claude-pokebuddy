@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { base64Encode } from '../hooks/codec'
 import { species } from '../hooks/data/dex'
-import type { Sprite } from '../hooks/data/types'
-import { artSize, expBar, fitArt, pixelArtSvg, spriteRows, spriteSize, spriteSvg } from '../hooks/render/sprite'
+import type { Idle, Sprite } from '../hooks/data/types'
+import { artSize, expBar, fitArt, IDLE_FIT, idleScale, idleSvg, pixelArtSvg, slotView, spriteRows, spriteSize } from '../hooks/render/sprite'
+import { POKEDEX } from '../hooks/data/pokedex.generated'
 import { freshSave } from '../hooks/state'
 
 // 2x2: top row [red, transparent], bottom row [blue, red]
@@ -26,12 +27,40 @@ describe('sprite', () => {
       { text: '▄', fg: '#ff0000' },
     ]])
   })
-  test('svg: one rect per coloured run, transparent pixels skipped', () => {
-    const svg = spriteSvg(tiny, false)
+  test('the idle draws each frame as a path per colour, the first shown, each for its own share of the loop', () => {
+    // Two 2x2 frames: [red, clear / blue, red] for 30 sixtieths, then all red for 30.
+    const idle: Idle = {
+      w: 2, h: 2, frames: [base64Encode(new Uint8Array([0x10, 0x21])), base64Encode(new Uint8Array([0x11, 0x11]))],
+      durations: [30, 30], palette: ['', '#ff0000', '#0000ff'], shiny: ['', '#00ff00', '#0000ff'],
+    }
+    const svg = idleSvg(idle, false, 0)
     expect(svg).toContain('viewBox="0 0 2 2"')
-    expect(svg.match(/<rect /g)?.length).toBe(3)
-    expect(svg).toContain('<rect x="0" y="0" width="1" height="1" fill="#ff0000"/>')
-    expect(spriteSvg(tiny, true)).toContain('fill="#00ff00"')
+    expect(svg).toContain('<g visibility="visible"><animate attributeName="visibility" calcMode="discrete" values="visible;hidden" keyTimes="0;0.5" dur="1s"')
+    expect(svg).toContain('<path fill="#ff0000" d="M0 0h1v1h-1zM1 1h1v1h-1z"/><path fill="#0000ff" d="M0 1h1v1h-1z"/>')
+    expect(svg).toContain('values="hidden;visible;hidden" keyTimes="0;0.5;1"')
+    expect(svg).toContain('<path fill="#ff0000" d="M0 0h2v1h-2zM0 1h2v1h-2z"/>')
+    expect(idleSvg(idle, true, 0)).toContain('fill="#00ff00"')
+    expect(idleSvg(idle, false, 1).match(/begin="[^"]+"/)?.[0]).not.toBe(idleSvg(idle, false, 2).match(/begin="[^"]+"/)?.[0])
+  })
+  test('every idle fits the Svg limit, a frame per duration, and draws no taller than a full-scale one', () => {
+    for (const sp of POKEDEX) {
+      const { idle } = sp
+      expect(idle.frames).toHaveLength(idle.durations.length)
+      expect(idle.palette.length).toBeLessThanOrEqual(16)
+      expect(idleSvg(idle, true, sp.id).length).toBeLessThan(131072)
+      expect(idle.h * idleScale(idle, 6)).toBeLessThanOrEqual(IDLE_FIT * 6)
+    }
+  })
+  test('a box slot seats every idle whole, on its bottom edge, at a scale in half pixels', () => {
+    for (const { idle } of POKEDEX) {
+      const view = slotView(idle, 96)
+      const s = 96 / view.w
+      expect(view.w).toBe(view.h)
+      expect(Number.isInteger(s * 2)).toBe(true)
+      expect(Math.max(idle.w, idle.h) * s).toBeLessThanOrEqual(96)
+      expect(view.y + view.h).toBe(idle.h)
+      expect(Number.isInteger(view.x) && view.x <= 0 && view.x + view.w >= idle.w).toBe(true)
+    }
   })
   test('shiny swaps the palette only', () => {
     expect(spriteRows(tiny, true)[0]![0]).toEqual({ text: '▀', fg: '#00ff00', bg: '#0000ff' })

@@ -3,7 +3,7 @@ import { COMMAND_HELP, evolutionHints, feedStreak, stoneProgress } from '../comm
 import { COMMAND } from '../config'
 import { POKEDEX } from '../data/pokedex.generated'
 import { species } from '../data/dex'
-import { STONES, stoneName } from '../data/types'
+import { STONES, stoneName, type PokemonType, type Stone } from '../data/types'
 import { stoneEvolution } from '../evolution'
 import { expForLevel, MAX_LEVEL } from '../exp'
 import type { Save } from '../state'
@@ -37,6 +37,8 @@ const SCREEN = '#f4f4e8'
 const INK = '#202020'
 const FADED = '#66665c'
 const WHITE = '#ffffff'
+// The empty part of a bar on the screen: light, so the filled part stands out.
+const TRACK = '#d6d6c8'
 const PC_WALL = '#7fb069'
 const PC_EDGE = '#4a7a3a'
 const ART = { k: INK, w: '#f8f8f8', b: '#3b8fd6', l: '#b8e4ff', d: '#1f5a9e', r: '#f85050', y: '#f8d030', g: '#58c850', R: DEX_RED }
@@ -56,6 +58,25 @@ const DEX_LENS = pixelArtSvg([
   '..kkwwwwwkk..',
   '....kkkkk....',
 ], ART)
+// A stone each, in its colour and shape: a crescent, a flame, a drop, a bolt, a leaf.
+const STONE_COLOR: Record<Stone, string> = {
+  'moon-stone': '#a890f0', 'fire-stone': '#f08030', 'water-stone': '#6890f0', 'thunder-stone': '#f8d030', 'leaf-stone': '#78c850',
+}
+const STONE_ART: Record<Stone, string[]> = {
+  'moon-stone': ['..kkk..', '.kssk..', 'kssk...', 'ksk....', 'kssk...', '.kssk..', '..kkk..'],
+  'fire-stone': ['...k...', '..ksk..', '.kssk..', '.ksyskk', 'ksyyysk', 'ksyyysk', '.kkkkk.'],
+  'water-stone': ['...k...', '..ksk..', '.kssk..', 'ksssssk', 'kwsssk.', '.ksssk.', '..kkk..'],
+  'thunder-stone': ['..kkkk.', '..kssk.', '.kssk..', 'ksssskk', '.kkssk.', '..ksk..', '..kk...'],
+  'leaf-stone': ['....kkk', '..kkssk', '.ksssk.', 'kssssk.', 'kssk...', 'kkk....', 'k......'],
+}
+const STONE_ICON = Object.fromEntries(STONES.map(s => [s, pixelArtSvg(STONE_ART[s], { ...ART, s: STONE_COLOR[s] })])) as Record<Stone, string>
+
+/** A stone's icon: its pixel art in the app, a ◆ in its colour in the terminal. */
+const stoneIcon = ({ Box, Text, Svg }: PanelElements, stone: Stone, isApp: boolean) => (
+  <Box key="icon" marginRight={1}>
+    {isApp && Svg ? <Svg source={STONE_ICON[stone]} alt={stoneName(stone)} width={14} height={14} /> : <Text color={STONE_COLOR[stone]}>◆</Text>}
+  </Box>
+)
 const POKE_BALL = pixelArtSvg(['..kkk..', '.kRRRk.', 'kRRRRRk', 'kkkwkkk', 'kwwwwwk', '.kwwwk.', '..kkk..'], ART)
 // A caught name on the case is a link the plugin answers, so a click opens its entry; `.invalid` never resolves, were it opened.
 const DEX_LINK = 'https://pokebuddy.invalid/dex/'
@@ -79,7 +100,7 @@ export function panel(els: PanelElements, view: PanelView, act: PanelActions, is
   const body = view.tab === 'box' ? (isCase ? pcBox(els, view, act) : boxTab(els, view, act, isNarrow))
     : view.tab === 'dex' ? dexTab(els, view, act, isApp, isCase)
     : view.tab === 'commands' ? helpTab(els, isApp, isNarrow)
-    : buddyTab(els, view, act, isApp, isNarrow)
+    : buddyTab(els, view, act, isApp, isNarrow, isCase)
   return (
     <Box flexDirection="column" paddingX={1}>
       <Box key="top" flexDirection="row" justifyContent="space-between">
@@ -105,36 +126,46 @@ export function panel(els: PanelElements, view: PanelView, act: PanelActions, is
   )
 }
 
-function buddyTab(els: PanelElements, { save, today }: PanelView, act: PanelActions, isApp: boolean, isNarrow: boolean) {
+function buddyTab(els: PanelElements, { save, today }: PanelView, act: PanelActions, isApp: boolean, isNarrow: boolean, isCase: boolean) {
   const { Box, Text, Button } = els
   const sp = species(save.species)
-  const color = TYPE_COLOR[sp.types[0]!]
+  // On the summary screen the type colour is darkened, so a light one (Electric's yellow) still shows on it.
+  const color = isCase ? shade(TYPE_COLOR[sp.types[0]!]) : TYPE_COLOR[sp.types[0]!]
+  const ink = isCase ? { text: INK, faded: FADED, track: TRACK } : undefined
   const toNext = save.level >= MAX_LEVEL ? 'max level' : `${expForLevel(sp.growth, save.level + 1) - save.exp} EXP to Lv ${save.level + 1}`
   const streak = feedStreak(save, today)
   const fedToday = save.feed.lastDate === today
   const held = STONES.filter(s => (save.bag[s] ?? 0) > 0)
   const hints = save.evolution ? [`Evolving into ${species(save.evolution.to).name}!`] : evolutionHints(sp)
-  const label = (text: string) => <Box key="label" width={13} flexShrink={0}><Text dimColor>{text}</Text></Box>
-  return [
-    <Box key="top" flexDirection="row">
-      <Box key="art" flexDirection="column" flexShrink={0}>{buddyArt(els, save, isApp)}</Box>
+  const label = (text: string) => <Box key="label" width={13} flexShrink={0}><Text color={ink?.faded} dimColor={!ink}>{text}</Text></Box>
+  const skills = (key: string) => <Box key={key} marginTop={1}>{skillColumns(els, save, color, isApp, ink)}</Box>
+  const tab = [
+    <Box key="top" flexDirection="row" alignItems={isCase ? 'flex-start' : undefined}>
+      {isCase
+        ? <Box key="art" flexShrink={0} backgroundColor={WHITE} borderStyle="round" borderColor={INK}>{buddyArt(els, save, true)}</Box>
+        : <Box key="art" flexDirection="column" flexShrink={0}>{buddyArt(els, save, isApp)}</Box>}
       <Box key="facts" flexDirection="column" marginLeft={2}>
-        <Box key="name" flexDirection="row">
-          <Text key="n" bold>{save.nickname ? `${save.nickname} (${sp.name})` : sp.name}</Text>
-          {save.isShiny && <Text key="shiny" color="#f8d030"> ★</Text>}
-          <Text key="lv">{`  Lv ${save.level}  `}</Text>
-          <Text key="p" dimColor>{save.personality}</Text>
+        {isCase && <Text key="no" color={CASE}>{`No.${dexNo(sp.id)}`}</Text>}
+        {/* Margins, not spaces, between the parts: a surface may trim them. */}
+        <Box key="name" flexDirection="row" flexWrap="wrap">
+          <Text key="n" bold color={ink?.text}>{save.nickname ? `${save.nickname} (${sp.name})` : sp.name}</Text>
+          {save.isShiny && <Box key="shiny" marginLeft={1}><Text color={isCase ? CASE : '#f8d030'}>★</Text></Box>}
+          <Box key="lv" marginLeft={2}><Text color={ink?.text}>{`Lv ${save.level}`}</Text></Box>
+          <Box key="p" marginLeft={2}><Text color={ink?.faded} dimColor={!ink}>{save.personality}</Text></Box>
         </Box>
+        {isCase && <Box key="types" flexDirection="row">{typeBadges(els, sp.types)}</Box>}
         <Box key="exp" flexDirection={isNarrow ? 'column' : 'row'}>
-          {expBarTexts(els, save, 10, color, isApp)}
-          <Text key="next" dimColor>{isNarrow ? toNext : `  ${toNext}`}</Text>
+          {expBarTexts(els, save, 10, color, isApp, ink)}
+          <Box key="next" marginLeft={isNarrow ? 0 : 2}><Text color={ink?.faded} dimColor={!ink}>{toNext}</Text></Box>
         </Box>
-        {(hints.length ? hints : ['Does not evolve.']).map(hint => <Text key={hint} color={save.evolution ? color : undefined} dimColor={!save.evolution}>{hint}</Text>)}
-        {!isNarrow && <Box key="skills" marginTop={1}>{skillColumns(els, save, color, isApp)}</Box>}
+        {(hints.length ? hints : ['Does not evolve.']).map(hint => (
+          <Text key={hint} color={save.evolution ? color : ink?.faded} dimColor={!save.evolution && !ink}>{hint}</Text>
+        ))}
+        {!isNarrow && skills('skills')}
       </Box>
     </Box>,
     // Too narrow for the bars beside the sprite: they go under it, full width.
-    ...(isNarrow ? [<Box key="skills" marginTop={1}>{skillColumns(els, save, color, isApp)}</Box>] : []),
+    ...(isNarrow ? [skills('skills')] : []),
     // The buttons come before the bag and stones: an inline pane is short, and what it cuts off should be the reading.
     <Box key="actions" flexDirection="row" flexWrap="wrap" marginTop={1}>
       <Box key="a-feed" marginRight={3}>
@@ -148,10 +179,11 @@ function buddyTab(els: PanelElements, { save, today }: PanelView, act: PanelActi
     </Box>,
     <Box key="bag" flexDirection="row" flexWrap="wrap" marginTop={1}>
       {label('Bag')}
-      {held.length === 0 && <Text key="empty" dimColor>No stones yet</Text>}
+      {held.length === 0 && <Text key="empty" color={ink?.faded} dimColor={!ink}>No stones yet</Text>}
       {held.map(s => (
-        <Box key={`s-${s}`} flexDirection="row" marginRight={2}>
-          <Text key="t">{`${stoneName(s)} ×${save.bag[s]}`}</Text>
+        <Box key={`s-${s}`} flexDirection="row" alignItems="center" marginRight={2}>
+          {stoneIcon(els, s, isApp)}
+          <Text key="t" color={ink?.text}>{`${stoneName(s)} ×${save.bag[s]}`}</Text>
           {stoneEvolution(save.species, s) !== null &&
             <Box key="b" marginLeft={1}><Button key={`use:${s}`} variant="primary" onPress={() => act.run(`use ${s}`)}>Use</Button></Box>}
         </Box>
@@ -159,20 +191,27 @@ function buddyTab(els: PanelElements, { save, today }: PanelView, act: PanelActi
     </Box>,
     <Box key="streak" flexDirection="row">
       {label('Feed streak')}
-      <Text key="t">{`${streak} day${streak === 1 ? '' : 's'}`}</Text>
+      <Text key="t" color={ink?.text}>{`${streak} day${streak === 1 ? '' : 's'}`}</Text>
     </Box>,
     <Box key="stones" flexDirection="row">
       {label('Next stones')}
-      <Box key="list" flexDirection="row" flexWrap="wrap">
+      {/* A line each, the counts in a column, so the four read as a list. */}
+      <Box key="list" flexDirection="column">
         {stoneProgress(save, today).map(p => (
-          <Box key={p.name} flexDirection="row" marginRight={2}>
-            <Text key="n">{`${p.name.replace(' Stone', '')} ${p.done}/${p.of}`}</Text>
-            <Text key="w" dimColor>{` ${p.work}`}</Text>
+          <Box key={p.stone} flexDirection="row" alignItems="center">
+            {stoneIcon(els, p.stone, isApp)}
+            <Box key="n" width={8}><Text color={ink?.text}>{p.name.replace(' Stone', '')}</Text></Box>
+            <Box key="c" width={6}><Text color={ink?.text}>{`${p.done}/${p.of}`}</Text></Box>
+            <Text key="w" color={ink?.faded} dimColor={!ink}>{p.work}</Text>
           </Box>
         ))}
       </Box>
     </Box>,
   ]
+  // The app's buddy is on a summary screen, as the Game Boy shows one: the Pokédex's screen, framed in ink.
+  return isCase
+    ? [<Box key="screen" flexDirection="column" backgroundColor={SCREEN} borderStyle="round" borderColor={INK} paddingX={2} paddingY={1}>{tab}</Box>]
+    : tab
 }
 
 function boxTab({ Box, Text, Button }: PanelElements, { save, releasing }: PanelView, act: PanelActions, isNarrow: boolean) {
@@ -210,14 +249,25 @@ const inkOn = (hex: string) => {
   return r! * 0.299 + g! * 0.587 + b! * 0.114 > 128 ? INK : WHITE
 }
 
+/** A type colour darker by a third, for a bar or a line of text on the light screen. */
+const shade = (hex: string) => '#' + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * 0.66).toString(16).padStart(2, '0')).join('')
+
+/** The types as the case's badges: each on its colour, in the text that reads on it. */
+const typeBadges = ({ Box, Text }: PanelElements, types: readonly PokemonType[]) => types.map(t => (
+  <Box key={t} marginRight={1}><Text backgroundColor={TYPE_COLOR[t]} color={inkOn(TYPE_COLOR[t])}>{` ${t.toUpperCase()} `}</Text></Box>
+))
+
+// The square each box card seats its sprite in, so every card has its name and buttons at the same height.
+const CARD_SLOT = 96
+
 /** The app's box: a PC box, a card per Pokémon on the wallpaper, the buddy's first. */
 function pcBox(els: PanelElements, { save, releasing }: PanelView, act: PanelActions) {
   const { Box, Text, Button } = els
   const card = (key: string, m: Save | Save['box'][number], isBuddy: boolean, acts: unknown) => (
     <Box key={key} flexDirection="column" alignItems="center" width={26} marginRight={1} marginBottom={1} paddingX={1}
       backgroundColor={WHITE} borderStyle="round" borderColor={isBuddy ? CASE : PC_EDGE}>
-      {speciesArt(els, species(m.species), m.isShiny, true, 3)}
-      <Text key="name" bold color={INK}>{monName(m)}</Text>
+      {speciesArt(els, species(m.species), m.isShiny, true, 3, CARD_SLOT)}
+      <Text key="name" bold color={INK} wrap="truncate-end">{monName(m)}</Text>
       <Text key="lv" color={isBuddy ? CASE : FADED}>{isBuddy ? `Buddy · Lv ${m.level}` : `Lv ${m.level}`}</Text>
       <Box key="acts" flexDirection="row" flexWrap="wrap" justifyContent="center" marginTop={1}>{acts}</Box>
     </Box>
@@ -381,9 +431,7 @@ function dexEntry(els: PanelElements, { save, dex }: PanelView, act: PanelAction
         <Text key="no" color={isCase ? CASE : DEX_RED}>{`No.${dexNo(sp.id)}`}</Text>
         <Text key="name" bold color={ink}>{sp.name}</Text>
         <Box key="types" flexDirection="row">
-          {sp.types.map(t => isCase
-            ? <Box key={t} marginRight={1}><Text backgroundColor={TYPE_COLOR[t]} color={inkOn(TYPE_COLOR[t])}>{` ${t.toUpperCase()} `}</Text></Box>
-            : <Text key={t} color={TYPE_COLOR[t]}>{`${t.toUpperCase()} `}</Text>)}
+          {isCase ? typeBadges(els, sp.types) : sp.types.map(t => <Text key={t} color={TYPE_COLOR[t]}>{`${t.toUpperCase()} `}</Text>)}
         </Box>
         <Text key="ht" color={ink}>{`HT  ${(sp.height / 10).toFixed(1)} m`}</Text>
         <Text key="wt" color={ink}>{`WT  ${(sp.weight / 10).toFixed(1)} kg`}</Text>

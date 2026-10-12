@@ -785,6 +785,13 @@ describe('register', () => {
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await pane($, surface)
       expect(await ui.find({ type: 'Text', text: /PIKACHU/ })).toBeDefined()
+      // The app's buddy is on a summary screen: its number and type badges, and the parts apart by margins, not spaces.
+      expect(await ui.find({ type: 'Text', text: 'No.025' }) !== undefined).toBe(surface === 'desktop')
+      expect(await ui.find({ type: 'Text', text: ' ELECTRIC ' }) !== undefined).toBe(surface === 'desktop')
+      expect(await ui.find({ type: 'Text', text: /^Lv \d+$/ })).toBeDefined()
+      // Each next stone on its own line with its icon: pixels in the app, a ◆ in the terminal.
+      expect(await ui.find({ type: 'Svg', alt: 'THUNDER STONE' }) !== undefined).toBe(surface === 'desktop')
+      expect(await ui.find({ type: 'Text', text: 'config edits' })).toBeDefined()
       await ui.press({ key: 'tab:box' })
       // The app draws the box as a PC box of cards, each with its sprite; the terminal as numbered rows.
       if (surface === 'desktop') {

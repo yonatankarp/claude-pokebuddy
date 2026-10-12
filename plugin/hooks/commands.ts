@@ -56,14 +56,14 @@ export function feedStreak(save: Save, today: string): number {
 }
 
 /** Progress to the next stone of each kind: the work that earns it, done of needed. */
-export function stoneProgress(save: Save, today: string): { name: string; done: number; of: number; work: string }[] {
+export function stoneProgress(save: Save, today: string): { stone: Stone; name: string; done: number; of: number; work: string }[] {
   const c = save.counters
   const leaf = feedStreak(save, today)
   return [
-    { name: 'Thunder Stone', done: c.greens % 10, of: 10, work: 'green checks' },
-    { name: 'Fire Stone', done: c.commits % 10, of: 10, work: 'commits' },
-    { name: 'Water Stone', done: c.configEdits % 10, of: 10, work: 'config edits' },
-    { name: 'Leaf Stone', done: leaf % 7, of: 7, work: 'feed days' },
+    { stone: 'thunder-stone', name: 'Thunder Stone', done: c.greens % 10, of: 10, work: 'green checks' },
+    { stone: 'fire-stone', name: 'Fire Stone', done: c.commits % 10, of: 10, work: 'commits' },
+    { stone: 'water-stone', name: 'Water Stone', done: c.configEdits % 10, of: 10, work: 'config edits' },
+    { stone: 'leaf-stone', name: 'Leaf Stone', done: leaf % 7, of: 7, work: 'feed days' },
   ]
 }
 
