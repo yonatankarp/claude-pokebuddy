@@ -95,3 +95,10 @@ Battles, trading between people, party limits, Poké Balls and catch chances, mo
 - **Encounters are rolls, not a schedule** (changed after review: a fixed schedule was too predictable). A 1 in 5 chance per fixed check, 1 in 10 per commit, 3 in 100 per turn of tool work, an even chance for a session judged 80+; the 7th feed-streak day always brings one. Same averages as the table, still at most 3 a day.
 - Open questions went with their defaults: no re-roll, the encounter table as drafted, a band flash on a catch, and bare `/buddy` opens the panel.
 
+## Changed in 1.2.1
+
+- **The panel fits the terminal.** Under 56 body columns the skill bars go under the sprite and the box's buttons under each name; the Buddy tab's buttons come right after the skills so a short inline pane does not cut them off.
+- **The Commands tab is now Help:** a list of the typed commands, since the Buddy and Box tabs already hold the buttons. A mistyped `/buddy` command says it is not a command, then shows the help; bare `/buddy` always opens on the Buddy tab.
+- **The Pokédex tab is a Game Boy-style list,** two columns of 13 per page with Prev and Next, the caught ones marked ◓; picking one opens its entry (sprite, type, height, weight, text). This replaces the grid of numbers above.
+- Tabs and buttons show their keys in the terminal (`1: Buddy`, `f: Feed`); mute is `m` and Stop evolving `b`.
+
