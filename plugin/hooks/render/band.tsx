@@ -142,10 +142,10 @@ export function buddyArt(els: BandElements, save: Save, isApp: boolean) {
 }
 
 /** A species' icon: an SVG in the app, half-block rows in the terminal. */
-export function speciesArt(els: BandElements, sp: Species, isShiny: boolean, isApp: boolean) {
+export function speciesArt(els: BandElements, sp: Species, isShiny: boolean, isApp: boolean, scale = SVG_SCALE) {
   const { icon } = sp
   return isApp && els.Svg
-    ? <els.Svg key="svg" source={spriteSvg(icon, isShiny)} alt={`${sp.name} sprite`} width={icon.w * SVG_SCALE} height={icon.h * SVG_SCALE} />
+    ? <els.Svg key="svg" source={spriteSvg(icon, isShiny)} alt={`${sp.name} sprite`} width={icon.w * scale} height={icon.h * scale} />
     : drawRows(els, spriteRows(icon, isShiny))
 }
 

@@ -325,7 +325,7 @@ export const register: Register = (on, options) => {
       tab: tab => { void update($, tabAtom, () => tab); void update($, noteAtom, () => null); void update($, releasingAtom, () => null) },
       releasing: index => { void update($, releasingAtom, () => index) },
       dex: dex => { void update($, dexAtom, () => dex) },
-    }, e.surface !== 'terminal')
+    }, e.surface !== 'terminal', e.surface === 'desktop' || e.surface === 'vscode')
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

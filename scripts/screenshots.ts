@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { renderDesktopPanel } from './desktop.ts'
 import { band, type BandElements, type BandView } from '../plugin/hooks/render/band.tsx'
 import { panel, type PanelElements, type PanelView } from '../plugin/hooks/render/panel.tsx'
 import { species } from '../plugin/hooks/data/dex.ts'
@@ -207,6 +208,10 @@ export function scenes(): Record<string, string> {
     'evolving.svg': renderScene(view({ save: sceneSave(7, 16, { evolution: { to: 8 }, expBySource: TINKERER }), bubble: null, evolving: true }), ROWS, COLUMNS),
     'panel.svg': renderPanel({ ...panelView, tab: 'buddy' }),
     'panel-box.svg': renderPanel({ ...panelView, tab: 'box' }),
+    // The desktop app's Pokédex and PC box, with a few more caught so the list shows some.
+    'desktop-dex.svg': renderDesktopPanel({ ...panelView, tab: 'dex', save: { ...bulbasaur, caught: [...bulbasaur.caught, 4, 7, 16, 19, 25] } }),
+    'desktop-dex-entry.svg': renderDesktopPanel({ ...panelView, tab: 'dex', dex: { page: 0, entry: 25 }, save: { ...bulbasaur, caught: [...bulbasaur.caught, 25] } }),
+    'desktop-box.svg': renderDesktopPanel({ ...panelView, tab: 'box' }),
   }
 }
 

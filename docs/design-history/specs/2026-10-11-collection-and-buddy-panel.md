@@ -102,3 +102,7 @@ Battles, trading between people, party limits, Poké Balls and catch chances, mo
 - **The Pokédex tab is a Game Boy-style list,** two columns of 13 per page with Prev and Next, the caught ones marked ◓; picking one opens its entry (sprite, type, height, weight, text). This replaces the grid of numbers above.
 - Tabs and buttons show their keys in the terminal (`1: Buddy`, `f: Feed`); mute is `m` and Stop evolving `b`.
 
+
+## Changed in 1.2.3
+
+- **On desktop and in VS Code the Pokédex and Box tabs look like the devices.** The Pokédex is a red case with the blue lens and three lights on its lid, the list or entry on a cream screen, a Poké Ball by each caught one and the type as a coloured badge. The list's rows are text, as the app draws every `Button` as a native one, which would make a caught row taller than the rest. A caught name is a link in a `Markdown` whose `onLinkPress` opens the entry (the URL, on the reserved `.invalid` domain, is never opened), and a ▶ cursor picks one of the caught, moved with ▲ ▼ and opened with Data (keys `k`, `j`, `a`), as the Game Boy's list works. The box is a PC box: a card per Pokémon with its sprite on a wallpaper, the buddy's first. They are built from coloured `Box`es, so the buttons stay real, with small hand-drawn `Svg`s for the lens and the Poké Ball; every `Text` on them names its colour, as a dark theme would hide the default one. The terminal and the phone keep the lists: the terminal has no `Svg`, and the phone is too narrow for the case.

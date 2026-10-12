@@ -3,7 +3,7 @@ declare module 'claude-code' {
   type Element = (props: Record<string, unknown>) => unknown
   interface Elements {
     terminal: { Box: Element; Text: Element; Button: Element }
-    desktop: { Box: Element; Text: Element; Svg: Element }
+    desktop: { Box: Element; Text: Element; Svg: Element; Markdown: Element }
   }
   type RenderSurface = 'terminal' | 'desktop' | 'mobile' | 'vscode'
 }
