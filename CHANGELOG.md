@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.2 (2026-10-12)
+
+- Commits, pushes and PRs count when Claude chains them with other commands. A command like `git commit -m x && git push | tail -3; git log` used to earn nothing, because its exit code belongs to the last part; now the lines git and gh print only on success (`[main 1a2b3c4] …`, `abc..def  main -> main`, the new PR's URL) prove them. Quiet runs (`-q`) print no proof and still count only when the exit code can vouch for them. A failed commit, a push with nothing to send and a PR that already exists still earn nothing.
+
 ## 1.2.1 (2026-10-11)
 
 - The `/buddy` panel fits the terminal. In a narrow docked pane the skill bars go under the sprite instead of wrapping beside it, and the box's buttons go under each name. In a short inline pane the Feed, view and Mute buttons come right after the skills, so they are not cut off. The panel also asks for a wider dock, though a width you set yourself still wins.

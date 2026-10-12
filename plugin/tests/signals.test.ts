@@ -132,6 +132,26 @@ describe('signalsFromTool hardening', () => {
     expect(bash('git add . && git commit -m x && git push')).toEqual(['tool', 'commit', 'push'])
     expect(bash('git commit -m x;')).toEqual(['tool', 'commit'])
   })
+  test('a commit, push or PR the exit code cannot vouch for counts when its output proves it', () => {
+    const run = (command: string, text: string, isError = false) => signalsFromTool('Bash', { command }, isError ? 'failed' : 'ok', text).map(label)
+    const committed = '[main 1a2b3c4] fix: the thing\n 1 file changed, 2 insertions(+)'
+    const pushed = 'To github.com:me/repo.git\n   1a2b3c4..5d6e7f8  main -> main'
+    expect(run('git add -A && git commit -m x; git log --oneline -1', committed)).toEqual(['tool', 'commit'])
+    expect(run('git commit -m x && git push 2>&1 | tail -3', `${committed}\n${pushed}`)).toEqual(['tool', 'commit', 'push'])
+    expect(run('git push -u origin feat 2>&1 | grep -v remote', ' * [new branch]      feat -> feat')).toEqual(['tool', 'push'])
+    expect(run('git commit -m x && npm test', committed, true)).toEqual(['tool', 'commit'])
+    expect(run('gh pr create --fill; echo done', 'https://github.com/me/repo/pull/7\ndone')).toEqual(['tool', 'pr'])
+  })
+  test('output alone proves nothing: no proof, a quiet push, a PR that exists or a command that never ran it', () => {
+    const run = (command: string, text: string, isError = false) => signalsFromTool('Bash', { command }, isError ? 'failed' : 'ok', text).map(label)
+    expect(run('git commit -q -m x; git log -1', '')).toEqual(['tool'])
+    expect(run('git push -q 2>&1 | grep -v remote', '')).toEqual(['tool'])
+    expect(run('git commit -m x; git status', 'nothing to commit, working tree clean')).toEqual(['tool'])
+    expect(run('gh pr create --fill; true', 'a pull request for branch "feat" into branch "main" already exists:\nhttps://github.com/me/repo/pull/7'))
+      .toEqual(['tool'])
+    expect(run('git log -3; cat notes.txt', '[main 1a2b3c4] an old commit')).toEqual(['tool'])
+    expect(run('git commit -m x; git commit -m y', '[main 1a2b3c4] x')).toEqual(['tool', 'commit'])
+  })
   test('check key drops redirections', () => {
     expect(bash('./gradlew test > /tmp/x.log 2>&1')).toEqual(['tool', 'check:./gradlew test:true'])
     expect(bash('./gradlew test 2>/dev/null >>o.log')).toEqual(['tool', 'check:./gradlew test:true'])
