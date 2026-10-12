@@ -12,8 +12,6 @@ export type Evolution =
   | { kind: 'trade'; to: number }
 /** 4 bits per pixel, row-major, base64. Index 0 is transparent. */
 export type Sprite = { w: number; h: number; px: string; palette: readonly string[]; shiny: readonly string[] }
-/** The Mystery Dungeon idle, facing the viewer: frames of one size and palette, each shown `durations[i]` sixtieths of a second. */
-export type Idle = { w: number; h: number; frames: readonly string[]; durations: readonly number[]; palette: readonly string[]; shiny: readonly string[] }
 export type Species = {
   id: number
   name: string
@@ -28,6 +26,4 @@ export type Species = {
   evolutions: readonly Evolution[]
   /** The Gen 7 menu icon (40x30 before cropping). */
   icon: Sprite
-  /** The idle animation the app plays in place of the icon. */
-  idle: Idle
 }

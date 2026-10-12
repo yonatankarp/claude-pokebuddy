@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 
 export const RAW = new URL('./raw/', import.meta.url)
 export const MANIFEST = new URL('./sources.json', import.meta.url)
-export type Manifest = { spritesRef: string; pmdRef: string; files: Record<string, string> }
+export type Manifest = { spritesRef: string; files: Record<string, string> }
 
 export const sha256 = (b: Buffer) => createHash('sha256').update(b).digest('hex')
 
