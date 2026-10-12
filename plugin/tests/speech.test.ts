@@ -67,8 +67,18 @@ describe('speech', () => {
     expect(cleanReply('', 80)).toBe(null)
     expect(cleanReply('   ', 80)).toBe(null)
     expect(cleanReply('""', 80)).toBe(null)
-    expect(cleanReply('x'.repeat(200), 80)!.length).toBe(80)
+    expect(cleanReply('x'.repeat(200), 80)).toBe('x'.repeat(79) + '…')
     expect(cleanReply('line one\nline two', 80)).toBe('line one')
+  })
+  test('a reply too long for the bubble ends on a whole sentence, or else on a whole word and an ellipsis', () => {
+    const said = "*rattles bone* Ooh, a mod for Guillotine's characters? Bold. Let's see if you can pull it off."
+    expect(cleanReply(said, 80)).toBe("*rattles bone* Ooh, a mod for Guillotine's characters? Bold.")
+    expect(cleanReply('Pika! ' + 'a long run of words that never ends a sentence at all '.repeat(3), 80))
+      .toBe('Pika! a long run of words that never ends a sentence at all a long run of…')
+    // A sentence ending right at the limit is kept whole; a short opening one is not enough on its own.
+    expect(cleanReply('Char! ' + 'x'.repeat(73) + '. More', 80)).toBe('Char! ' + 'x'.repeat(73) + '.')
+    expect(cleanReply('Hi. ' + 'word '.repeat(30), 80)!.endsWith('word…')).toBe(true)
+    for (const reply of [said, 'Pika! ' + 'word '.repeat(40), 'x'.repeat(200)]) expect(cleanReply(reply, 80)!.length).toBeLessThanOrEqual(80)
   })
   test('cleanReply rejects refusals and lead-ins', () => {
     expect(cleanReply("I can't roleplay that.", 80)).toBe(null)

@@ -34,8 +34,8 @@ export type Conversation = { prompt: string | null; answer: string | null }
 /** How much of the prompt and of the answer the speech model sees. */
 export const EXCERPT_MAX = 300
 
-const FACTS_SYSTEM = 'You are a Pokémon companion living in a developer\'s terminal. Reply with one short line (max 12 words) in character, reacting to what just happened. Use your cry sometimes. No quotes, no emoji, no markdown, no em dashes.'
-const CONVERSATION_SYSTEM = 'You are a Pokémon companion living in a developer\'s terminal. Reply with one short line (max 12 words) in character, reacting to what the person asked and what got done. Never quote secrets or code verbatim. Use your cry sometimes. No quotes, no emoji, no markdown, no em dashes.'
+const FACTS_SYSTEM = 'You are a Pokémon companion living in a developer\'s terminal. Reply with one short line (max 12 words, under 70 characters) in character, reacting to what just happened. Use your cry sometimes. No quotes, no emoji, no markdown, no em dashes.'
+const CONVERSATION_SYSTEM = 'You are a Pokémon companion living in a developer\'s terminal. Reply with one short line (max 12 words, under 70 characters) in character, reacting to what the person asked and what got done. Never quote secrets or code verbatim. Use your cry sometimes. No quotes, no emoji, no markdown, no em dashes.'
 
 const excerpt = (text: string | null) => (text ?? '').trim().slice(0, EXCERPT_MAX)
 
@@ -58,7 +58,21 @@ export function cleanReply(text: string, max: number): string | null {
   if (!first) return null
   const unquoted = first.replace(/^["'“”]+|["'“”]+$/g, '').trim()
   if (!unquoted || REFUSAL.test(unquoted) || unquoted.endsWith(':')) return null
-  return unquoted.slice(0, max)
+  return fit(unquoted, max)
+}
+
+/**
+ * A reply of at most `max` characters that never stops mid-word: the sentences that fit, or, when the first one does
+ * not, the words that fit and an ellipsis.
+ */
+function fit(line: string, max: number): string {
+  if (line.length <= max) return line
+  const cut = line.slice(0, max)
+  // The last sentence end (. ! ? ~, with any closing marks) that the next character starts a new word after.
+  const sentences = /^.*[.!?~][)"'”*]*(?=\s)/.exec(line.slice(0, max + 1))?.[0]
+  if (sentences && sentences.length >= max / 3) return sentences
+  const space = cut.slice(0, max - 1).lastIndexOf(' ')
+  return (space > 0 ? cut.slice(0, space).replace(/[\s,;:-]+$/, '') : cut.slice(0, max - 1)) + '…'
 }
 
 export async function speak($: { model: Pick<EngineInterface['model'], 'complete'> }, model: string, save: Save, facts: string, talk: Conversation | null = null): Promise<string> {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.2 (2026-10-12)
+
+- Your buddy's speech no longer stops mid-word. A line too long for the bubble used to be cut at 80 characters wherever that fell (`Let's see if you ca`); now it ends on the last whole sentence that fits, or on a whole word and an ellipsis. The speech model is also asked to stay under 70 characters.
+
 ## 1.4.1 (2026-10-12)
 
 - The idle animations are gone: the app draws each Pokémon's still icon again, as in 1.3.0, and the Mystery Dungeon sprites and their data are removed. The summary-screen Buddy tab, the stone lines and icons, and the box cards that line up all stay; each card seats the icon in the same square.
