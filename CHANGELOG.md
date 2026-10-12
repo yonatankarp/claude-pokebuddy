@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0 (2026-10-12)
+
+- In the desktop app and the VS Code extension the `/buddy` panel's Pokédex looks like the device: a red case with the big blue lens and three lights, the list on a cream screen with a Poké Ball by each one caught and every row the same height. Click a caught name to open its entry, or, as on the Game Boy, ▲ and ▼ move a ▶ cursor between the ones you have caught (across pages too), Data opens its entry and ◀ ▶ turn the page, and each entry's sprite framed with its type as a coloured badge. The Box tab is a PC box: a card for each Pokémon with its sprite on a green wallpaper, your buddy's first. The terminal and the phone keep the list layout. The README shows both.
+
 ## 1.2.2 (2026-10-12)
 
 - Commits, pushes and PRs count when Claude chains them with other commands. A command like `git commit -m x && git push | tail -3; git log` used to earn nothing, because its exit code belongs to the last part; now the lines git and gh print only on success (`[main 1a2b3c4] …`, `abc..def  main -> main`, the new PR's URL) prove them. Quiet runs (`-q`) print no proof and still count only when the exit code can vouch for them. A failed commit, a push with nothing to send and a PR that already exists still earn nothing.

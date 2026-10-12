@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import { base64Encode } from '../hooks/codec'
 import { species } from '../hooks/data/dex'
 import type { Sprite } from '../hooks/data/types'
-import { artSize, expBar, fitArt, spriteRows, spriteSize, spriteSvg } from '../hooks/render/sprite'
+import { artSize, expBar, fitArt, pixelArtSvg, spriteRows, spriteSize, spriteSvg } from '../hooks/render/sprite'
 import { freshSave } from '../hooks/state'
 
 // 2x2: top row [red, transparent], bottom row [blue, red]
@@ -12,6 +12,14 @@ const tiny: Sprite = {
 }
 
 describe('sprite', () => {
+  test('pixelArtSvg draws a rect per same-colour run, sized to the widest row, and leaves unknown characters clear', () => {
+    const svg = pixelArtSvg(['aab', '.a'], { a: '#111', b: '#222' })
+    expect(svg).toContain('viewBox="0 0 3 2"')
+    expect(svg).toContain('<rect x="0" y="0" width="2" height="1" fill="#111"/><rect x="2" y="0" width="1" height="1" fill="#222"/>')
+    expect(svg).toContain('<rect x="1" y="1" width="1" height="1" fill="#111"/>')
+    expect(svg.match(/<rect/g)).toHaveLength(3)
+  })
+
   test('half-block cells: top fg, bottom bg; transparent top uses lower half block', () => {
     expect(spriteRows(tiny, false)).toEqual([[
       { text: '▀', fg: '#ff0000', bg: '#0000ff' },

@@ -30,6 +30,12 @@ To update, run `claude plugin update pokebuddy@pokebuddy` and restart Claude Cod
 
 <p><img src="docs/images/panel-box.svg" width="49%" alt="the box, with a Pokémon to make your buddy"> <img src="docs/images/compact.svg" width="49%" alt="the compact one-line view"></p>
 
+In the desktop app and VS Code the Pokédex is the red device, with its lens, lights and screen, and the box is a PC box with a card for each Pokémon:
+
+<p><img src="docs/images/desktop-dex.svg" width="49%" alt="the Pokédex in the desktop app: a red case with a blue lens, the list on a cream screen"> <img src="docs/images/desktop-dex-entry.svg" width="49%" alt="a Pokédex entry for Pikachu in the desktop app"></p>
+
+![the PC box in the desktop app, a card per Pokémon on a green wallpaper](docs/images/desktop-box.svg)
+
 ## Commands
 
 In some places Claude Code shows the command as `/pokebuddy:buddy`.

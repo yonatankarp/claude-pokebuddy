@@ -746,7 +746,7 @@ describe('register', () => {
     }
   })
 
-  const pane = ($: Engine, surface: 'terminal' | 'desktop', bodyColumns = 120) => $.ui.mount({
+  const pane = ($: Engine, surface: 'terminal' | 'desktop' | 'mobile', bodyColumns = 120) => $.ui.mount({
     plugin: 'pokebuddy', surface, component: 'Pane', requestId: 'pokebuddy',
     props: { title: 'pokebuddy', isFocused: true, bodyColumns, placement: 'inline', scroll: { offset: 0, bodyRows: 30 }, view: {} },
     viewport: { columns: 120, rows: 40 },
@@ -786,9 +786,15 @@ describe('register', () => {
       const ui = await pane($, surface)
       expect(await ui.find({ type: 'Text', text: /PIKACHU/ })).toBeDefined()
       await ui.press({ key: 'tab:box' })
-      expect(await ui.find({ type: 'Text', text: /1\. GASTLY ★  Lv 1/ })).toBeDefined()
+      // The app draws the box as a PC box of cards, each with its sprite; the terminal as numbered rows.
+      if (surface === 'desktop') {
+        expect(await ui.find({ type: 'Text', text: 'BOX 1' })).toBeDefined()
+        expect(await ui.find({ type: 'Text', text: 'GASTLY ★' })).toBeDefined()
+        expect(await ui.find({ type: 'Svg', alt: 'GASTLY sprite' })).toBeDefined()
+      } else expect(await ui.find({ type: 'Text', text: /1\. GASTLY ★  Lv 1/ })).toBeDefined()
       await ui.press({ key: 'tab:dex' })
       expect(await ui.find({ type: 'Text', text: /OWN 2\/151/ })).toBeDefined()
+      expect(await ui.find({ type: 'Svg', alt: 'Pokédex lens' }) !== undefined).toBe(surface === 'desktop')
       await ui.press({ key: 'tab:commands' })
       expect(await ui.find({ type: 'Text', text: /Typed commands/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /Esc to close/ }) !== undefined).toBe(surface === 'terminal')
@@ -801,14 +807,26 @@ describe('register', () => {
     expect((store.get('save') as { level: number }).level).toBe(2)
     expect(await ui.find({ key: 'feed', text: 'Fed today' })).toBeDefined()
     await ui.press({ key: 'tab:dex' })
-    expect(await ui.find({ type: 'Text', text: / 002 ----------/ })).toBeDefined()
-    await ui.press({ key: 'dex:25' })
+    // The case's rows are all text: a cursor on the page's first caught one, moved with ▲ ▼ and opened with Data.
+    expect(await ui.find({ type: 'Text', text: '002' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '▶' })).toBeDefined()
+    // A caught name is a link the plugin answers: a click opens its entry.
+    await ui.press({ key: 'dex:25', link: { href: 'https://pokebuddy.invalid/dex/25' } })
+    expect(await ui.find({ type: 'Text', text: 'No.025' })).toBeDefined()
+    await ui.press({ key: 'dex-back' })
+    await ui.press({ key: 'dex-data' })
     expect(await ui.find({ type: 'Text', text: 'No.025' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /pouches/ })).toBeDefined()
     await ui.press({ key: 'dex-next' })
     expect(await ui.find({ type: 'Text', text: 'No.092' })).toBeDefined()
     await ui.press({ key: 'dex-back' })
-    expect(await ui.find({ type: 'Text', text: /◓|----------/ })).toBeDefined()
+    // Back on the list the cursor is on the entry left: its name in bold.
+    expect(await ui.find({ key: 'dex:92', text: /^\*\*\[GASTLY\]/ })).toBeDefined()
+    await ui.press({ key: 'dex-up' })
+    expect(await ui.find({ key: 'dex:25', text: /^\*\*\[PIKACHU\]/ })).toBeDefined()
+    await ui.press({ key: 'dex-down' })
+    await ui.press({ key: 'dex-data' })
+    expect(await ui.find({ type: 'Text', text: 'No.092' })).toBeDefined()
     await ui.press({ key: 'tab:box' })
     await ui.press({ key: 'switch:0' })
     expect((store.get('save') as { species: number }).species).toBe(92)
@@ -819,6 +837,22 @@ describe('register', () => {
     await ui.press({ key: 'release:0' })
     await ui.press({ key: 'release-yes' })
     expect((store.get('save') as { box: unknown[] }).box).toHaveLength(0)
+    await ui.unmount()
+  })
+
+  test('mobile keeps the list-style Pokédex and box, with sprites as Svg; only desktop and the editor draw the cases', async ($, on) => {
+    world(on, { save: { ...pika(), box: [{ species: 92, isShiny: false, personality: 'brave', nickname: null, level: 1, exp: 0 }] } })
+    on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+    mock.clock(on, { now: NOON })
+    await start($)
+    await $.command.run(run(''))
+    const ui = await pane($, 'mobile', 44)
+    await ui.press({ key: 'tab:box' })
+    expect(await ui.find({ type: 'Text', text: /1\. GASTLY  Lv 1/ })).toBeDefined()
+    await ui.press({ key: 'tab:dex' })
+    expect(await ui.find({ type: 'Svg', alt: 'Pokédex lens' })).toBeUndefined()
+    await ui.press({ key: 'dex:25' })
+    expect(await ui.find({ type: 'Svg', alt: 'PIKACHU sprite' })).toBeDefined()
     await ui.unmount()
   })
 

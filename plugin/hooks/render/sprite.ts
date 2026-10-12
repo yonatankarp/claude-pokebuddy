@@ -69,6 +69,14 @@ export function spriteSvg(sprite: Sprite, isShiny: boolean): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" shape-rendering="crispEdges">${rects.join('')}</svg>`
 }
 
+/** Hand-drawn pixel art as SVG markup: one string per row, one character per pixel, `colors` naming each; other characters are clear. */
+export function pixelArtSvg(rows: string[], colors: Record<string, string>): string {
+  const w = Math.max(...rows.map(r => r.length)), h = rows.length
+  const rects = rows.flatMap((row, y) => [...row.matchAll(/(.)\1*/g)].flatMap(m =>
+    colors[m[1]!] ? [`<rect x="${m.index}" y="${y}" width="${m[0].length}" height="1" fill="${colors[m[1]!]}"/>`] : []))
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" shape-rendering="crispEdges">${rects.join('')}</svg>`
+}
+
 /** The menu icon's size at 1:1. */
 export function artSize(sp: Species) {
   return spriteSize(sp.icon)
