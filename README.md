@@ -1,8 +1,13 @@
 # pokebuddy
 
+[![release](https://img.shields.io/github/v/release/yonatankarp/pokebuddy)](https://github.com/yonatankarp/pokebuddy/releases/latest)
+[![ci](https://github.com/yonatankarp/pokebuddy/actions/workflows/ci.yml/badge.svg)](https://github.com/yonatankarp/pokebuddy/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757)](https://code.claude.com/docs/en/discover-plugins)
+
 ![pokebuddy above the Claude Code prompt](docs/images/full.svg)
 
-A Gen 1 Pokémon lives above your Claude Code prompt, reacts to each turn in a little speech bubble and grows from the work you do. You get one per Claude Code config folder, rolled at random the first time it runs, starting at level 1.
+A Claude Code plugin with a Gen 1 Pokémon that lives above your prompt, reacts to each turn in a little speech bubble and grows from the work you do. You get one per Claude Code config folder, rolled at random the first time it runs, starting at level 1.
 
 ## Install
 
@@ -21,7 +26,9 @@ To update, run `claude plugin update pokebuddy@pokebuddy` and restart Claude Cod
 2. Feed it a Rare Candy once a day, from the panel or with `/buddy feed`.
 3. Work as usual: wild Pokémon turn up as you fix checks and commit, and you can switch your buddy to any of them.
 
-![the compact one-line view](docs/images/compact.svg)
+![the /buddy panel](docs/images/panel.svg)
+
+<p><img src="docs/images/panel-box.svg" width="49%" alt="the box, with a Pokémon to make your buddy"> <img src="docs/images/compact.svg" width="49%" alt="the compact one-line view"></p>
 
 ## Commands
 
@@ -48,7 +55,7 @@ Your Pokémon earns EXP from prompts, tool use, commits, pushes and PRs, fixing 
 
 Six skills show what kind of work it grew from, each 0 to 99: DEBUGGING (fixed checks), SHIPPING (commits, pushes and PRs), HACKING (tool use), FOCUS (prompts and active time), TINKERING (config edits) and WISDOM (session scores). Each is the square root of the EXP behind it, so your first sessions show up and the top takes real work. `/buddy stats` lists them, and the full view draws them as bars beside the bubble: always in the Claude desktop app and the editor, and in the terminal when it is wide enough (about 100 columns).
 
-<p><img src="docs/images/shiny.svg" width="49%" alt="a shiny Pikachu"> <img src="docs/images/evolving.svg" width="49%" alt="Charmander evolving at level 16"></p>
+<p><img src="docs/images/shiny.svg" width="49%" alt="a shiny Pikachu"> <img src="docs/images/evolving.svg" width="49%" alt="Squirtle evolving at level 16"></p>
 
 <details><summary>EXP table</summary>
 
