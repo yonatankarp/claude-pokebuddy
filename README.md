@@ -55,7 +55,7 @@ Your Pokémon earns EXP from prompts, tool use, commits, pushes and PRs, fixing 
 
 Six skills show what kind of work it grew from, each 0 to 99: DEBUGGING (fixed checks), SHIPPING (commits, pushes and PRs), HACKING (tool use), FOCUS (prompts and active time), TINKERING (config edits) and WISDOM (session scores). Each is the square root of the EXP behind it, so your first sessions show up and the top takes real work. `/buddy stats` lists them, and the full view draws them as bars beside the bubble: always in the Claude desktop app and the editor, and in the terminal when it is wide enough (about 100 columns).
 
-<p><img src="docs/images/shiny.svg" width="49%" alt="a shiny Pikachu"> <img src="docs/images/evolving.svg" width="49%" alt="Charmander evolving at level 16"></p>
+<p><img src="docs/images/shiny.svg" width="49%" alt="a shiny Pikachu"> <img src="docs/images/evolving.svg" width="49%" alt="Squirtle evolving at level 16"></p>
 
 <details><summary>EXP table</summary>
 

@@ -180,26 +180,29 @@ export function sceneSave(id: number, level: number, over: Partial<Save> = {}): 
 
 const ROWS = 20, COLUMNS = 100
 
-/** A box of the given species at a few levels, the second shiny, and the Pokédex they make. */
-function boxOf(ids: number[]): Pick<Save, 'box' | 'caught'> {
+/** A box of the given species at a few levels, the second shiny, and the Pokédex they make with `buddy`. */
+function boxOf(buddy: number, ids: number[]): Pick<Save, 'box' | 'caught'> {
   const box = ids.map((id, i) => {
     const level = [7, 4, 2][i] ?? 1
     return { species: id, isShiny: i === 1, personality: 'brave' as const, nickname: null, level, exp: expForLevel(species(id).growth, level) }
   })
-  return { box, caught: [4, ...ids] }
+  return { box, caught: [buddy, ...ids] }
 }
 
 export function scenes(): Record<string, string> {
   const charmander = sceneSave(4, 12)
   const said = 'Char! Tests are green again, nice work.'
   const view = (over: Partial<BandView>): BandView => ({ save: charmander, bubble: said, showFull: true, evolving: false, ...over })
+  const bulbasaur = { ...sceneSave(1, 11), bag: { 'thunder-stone': 1 }, ...boxOf(1, [92, 63, 133]) }
+  const panelView: Omit<PanelView, 'tab'> = { save: bulbasaur, releasing: null, note: null, dex: { page: 0, entry: null }, today: '2026-10-11', columns: 96 }
   return {
     'full.svg': renderScene(view({}), ROWS, COLUMNS),
-    'compact.svg': renderScene(view({ save: { ...charmander, view: 'compact' }, showFull: false }), ROWS, COLUMNS),
+    // Each picture its own Pokémon, so the README is not one Charmander over and over.
+    'compact.svg': renderScene(view({ save: sceneSave(52, 9, { view: 'compact' }), bubble: 'Meowth! That test is finally green.', showFull: false }), ROWS, COLUMNS),
     'shiny.svg': renderScene(view({ save: sceneSave(25, 22, { isShiny: true }), bubble: 'Pika pika! A shiny day for a push.' }), ROWS, COLUMNS),
-    'evolving.svg': renderScene(view({ save: sceneSave(4, 16, { evolution: { to: 5 } }), bubble: null, evolving: true }), ROWS, COLUMNS),
-    'panel.svg': renderPanel({ save: { ...charmander, bag: { 'fire-stone': 1 }, ...boxOf([92, 25, 133]) }, tab: 'buddy', releasing: null, note: null, dex: { page: 0, entry: null }, today: '2026-10-11', columns: 96 }),
-    'panel-box.svg': renderPanel({ save: { ...charmander, ...boxOf([92, 25, 133]) }, tab: 'box', releasing: null, note: null, dex: { page: 0, entry: null }, today: '2026-10-11', columns: 96 }),
+    'evolving.svg': renderScene(view({ save: sceneSave(7, 16, { evolution: { to: 8 } }), bubble: null, evolving: true }), ROWS, COLUMNS),
+    'panel.svg': renderPanel({ ...panelView, tab: 'buddy' }),
+    'panel-box.svg': renderPanel({ ...panelView, tab: 'box' }),
   }
 }
 
