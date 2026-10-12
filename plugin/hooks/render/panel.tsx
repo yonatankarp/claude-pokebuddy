@@ -257,14 +257,17 @@ const typeBadges = ({ Box, Text }: PanelElements, types: readonly PokemonType[])
   <Box key={t} marginRight={1}><Text backgroundColor={TYPE_COLOR[t]} color={inkOn(TYPE_COLOR[t])}>{` ${t.toUpperCase()} `}</Text></Box>
 ))
 
+// The square each box card seats its sprite in, so every card has its name and buttons at the same height.
+const CARD_SLOT = 96
+
 /** The app's box: a PC box, a card per Pokémon on the wallpaper, the buddy's first. */
 function pcBox(els: PanelElements, { save, releasing }: PanelView, act: PanelActions) {
   const { Box, Text, Button } = els
   const card = (key: string, m: Save | Save['box'][number], isBuddy: boolean, acts: unknown) => (
     <Box key={key} flexDirection="column" alignItems="center" width={26} marginRight={1} marginBottom={1} paddingX={1}
       backgroundColor={WHITE} borderStyle="round" borderColor={isBuddy ? CASE : PC_EDGE}>
-      {speciesArt(els, species(m.species), m.isShiny, true, 3)}
-      <Text key="name" bold color={INK}>{monName(m)}</Text>
+      {speciesArt(els, species(m.species), m.isShiny, true, 3, CARD_SLOT)}
+      <Text key="name" bold color={INK} wrap="truncate-end">{monName(m)}</Text>
       <Text key="lv" color={isBuddy ? CASE : FADED}>{isBuddy ? `Buddy · Lv ${m.level}` : `Lv ${m.level}`}</Text>
       <Box key="acts" flexDirection="row" flexWrap="wrap" justifyContent="center" marginTop={1}>{acts}</Box>
     </Box>

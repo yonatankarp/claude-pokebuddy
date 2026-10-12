@@ -3,7 +3,7 @@ import { skillStats } from '../commands'
 import { species } from '../data/dex'
 import type { Save } from '../state'
 import type { Species } from '../data/types'
-import { artSize, expBar, fitArt, idleScale, idleSvg, spriteRows, TYPE_COLOR, type Run } from './sprite'
+import { artSize, expBar, fitArt, idleScale, idleSvg, slotView, spriteRows, TYPE_COLOR, type Run } from './sprite'
 
 /** `showFull` is the full view, by choice or for a level-up or evolution flash. */
 export type BandView = { save: Save; bubble: string | null; showFull: boolean; evolving: boolean }
@@ -144,13 +144,16 @@ export function buddyArt(els: BandElements, save: Save, isApp: boolean) {
   return speciesArt(els, species(save.species), save.isShiny, isApp)
 }
 
-/** A species' art: its Mystery Dungeon idle in the app (interactive, so the animation plays), the icon's half-blocks in the terminal. */
-export function speciesArt(els: BandElements, sp: Species, isShiny: boolean, isApp: boolean, scale = SVG_SCALE) {
+/**
+ * A species' art: its Mystery Dungeon idle in the app (interactive, so the animation plays), the icon's half-blocks in
+ * the terminal. A `slot` (CSS pixels) seats it in that square, so a row of them lines up whatever the species.
+ */
+export function speciesArt(els: BandElements, sp: Species, isShiny: boolean, isApp: boolean, scale = SVG_SCALE, slot?: number) {
   const { idle } = sp
+  if (!isApp || !els.Svg) return drawRows(els, spriteRows(sp.icon, isShiny))
+  if (slot) return <els.Svg key="svg" source={idleSvg(idle, isShiny, sp.id, slotView(idle, slot))} alt={`${sp.name} sprite`} isInteractive width={slot} height={slot} />
   const s = idleScale(idle, scale)
-  return isApp && els.Svg
-    ? <els.Svg key="svg" source={idleSvg(idle, isShiny, sp.id)} alt={`${sp.name} sprite`} isInteractive width={idle.w * s} height={idle.h * s} />
-    : drawRows(els, spriteRows(sp.icon, isShiny))
+  return <els.Svg key="svg" source={idleSvg(idle, isShiny, sp.id)} alt={`${sp.name} sprite`} isInteractive width={idle.w * s} height={idle.h * s} />
 }
 
 export function band(els: BandElements, view: BandView, maxRows: number, columns: number, isFullscreen: boolean, surface: RenderSurface = 'terminal') {

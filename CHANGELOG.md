@@ -2,7 +2,7 @@
 
 ## 1.4.0 (2026-10-12)
 
-- In the desktop app and VS Code your Pokémon idles: its Pokémon Mystery Dungeon idle animation plays wherever the app draws it (above the prompt, the Buddy tab, the box and the Pokédex), breathing, flapping or flickering as it does in the games, and now and then it turns to look the other way. Each one starts at its own point, so a box of them does not move as one. A tall Pokémon is drawn at a smaller scale so it fits. The terminal keeps the still icon. The sprites are from PMDCollab SpriteCollab under CC BY-NC 4.0, credited in `SPRITE-CREDITS.md`.
+- In the desktop app and VS Code your Pokémon idles: its Pokémon Mystery Dungeon idle animation plays wherever the app draws it (above the prompt, the Buddy tab, the box and the Pokédex), breathing, flapping or flickering as it does in the games, and now and then it turns to look the other way. Each one starts at its own point, so a box of them does not move as one. A tall Pokémon is drawn at a smaller scale so it fits, and every box card seats its sprite in the same square, so the cards' names and buttons line up whatever is in the box. The terminal keeps the still icon. The sprites are from PMDCollab SpriteCollab under CC BY-NC 4.0, credited in `SPRITE-CREDITS.md`.
 - The Buddy tab in the app is a Game Boy summary screen: the Pokédex's cream screen, the sprite framed, its number and type badges. The level and personality no longer run together (`Lv 11cheerful`).
 - Next stones are a line each with an icon per stone, and the bag shows the icons too: a crescent, a flame, a drop, a bolt and a leaf in the app, a ◆ in the stone's colour in the terminal.
 

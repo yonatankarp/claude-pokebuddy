@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import { base64Encode } from '../hooks/codec'
 import { species } from '../hooks/data/dex'
 import type { Idle, Sprite } from '../hooks/data/types'
-import { artSize, expBar, fitArt, IDLE_FIT, idleScale, idleSvg, pixelArtSvg, spriteRows, spriteSize } from '../hooks/render/sprite'
+import { artSize, expBar, fitArt, IDLE_FIT, idleScale, idleSvg, pixelArtSvg, slotView, spriteRows, spriteSize } from '../hooks/render/sprite'
 import { POKEDEX } from '../hooks/data/pokedex.generated'
 import { freshSave } from '../hooks/state'
 
@@ -49,6 +49,17 @@ describe('sprite', () => {
       expect(idle.palette.length).toBeLessThanOrEqual(16)
       expect(idleSvg(idle, true, sp.id).length).toBeLessThan(131072)
       expect(idle.h * idleScale(idle, 6)).toBeLessThanOrEqual(IDLE_FIT * 6)
+    }
+  })
+  test('a box slot seats every idle whole, on its bottom edge, at a scale in half pixels', () => {
+    for (const { idle } of POKEDEX) {
+      const view = slotView(idle, 96)
+      const s = 96 / view.w
+      expect(view.w).toBe(view.h)
+      expect(Number.isInteger(s * 2)).toBe(true)
+      expect(Math.max(idle.w, idle.h) * s).toBeLessThanOrEqual(96)
+      expect(view.y + view.h).toBe(idle.h)
+      expect(Number.isInteger(view.x) && view.x <= 0 && view.x + view.w >= idle.w).toBe(true)
     }
   })
   test('shiny swaps the palette only', () => {
