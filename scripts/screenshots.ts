@@ -167,6 +167,10 @@ export function renderPanel(view: PanelView): string {
 
 /** EXP behind the skills, so the bars beside the bubble show some work: each skill is the square root. */
 const SKILL_EXP = { green: 3600, commit: 1600, tool: 4900, prompt: 2500, config: 400, judge: 900 }
+// Other trainers for the other pictures, so each shows its own mix of skills.
+const SHIPPER = { green: 900, commit: 6400, push: 1700, tool: 3600, prompt: 1600, config: 100, judge: 2500 }
+const TINKERER = { green: 400, commit: 900, tool: 6400, prompt: 4900, config: 3600, judge: 400 }
+const DEBUGGER = { green: 8100, commit: 1600, tool: 2500, prompt: 900, config: 0, judge: 1600 }
 
 /** A fresh save made into `id` at `level`, part way to the next level, checked by the save parser. */
 export function sceneSave(id: number, level: number, over: Partial<Save> = {}): Save {
@@ -193,14 +197,14 @@ export function scenes(): Record<string, string> {
   const charmander = sceneSave(4, 12)
   const said = 'Char! Tests are green again, nice work.'
   const view = (over: Partial<BandView>): BandView => ({ save: charmander, bubble: said, showFull: true, evolving: false, ...over })
-  const bulbasaur = { ...sceneSave(1, 11), bag: { 'thunder-stone': 1 }, ...boxOf(1, [92, 63, 133]) }
+  const bulbasaur = { ...sceneSave(1, 11, { expBySource: DEBUGGER }), bag: { 'thunder-stone': 1 }, ...boxOf(1, [92, 63, 133]) }
   const panelView: Omit<PanelView, 'tab'> = { save: bulbasaur, releasing: null, note: null, dex: { page: 0, entry: null }, today: '2026-10-11', columns: 96 }
   return {
     'full.svg': renderScene(view({}), ROWS, COLUMNS),
     // Each picture its own Pokémon, so the README is not one Charmander over and over.
     'compact.svg': renderScene(view({ save: sceneSave(52, 9, { view: 'compact' }), bubble: 'Meowth! That test is finally green.', showFull: false }), ROWS, COLUMNS),
-    'shiny.svg': renderScene(view({ save: sceneSave(25, 22, { isShiny: true }), bubble: 'Pika pika! A shiny day for a push.' }), ROWS, COLUMNS),
-    'evolving.svg': renderScene(view({ save: sceneSave(7, 16, { evolution: { to: 8 } }), bubble: null, evolving: true }), ROWS, COLUMNS),
+    'shiny.svg': renderScene(view({ save: sceneSave(25, 22, { isShiny: true, expBySource: SHIPPER }), bubble: 'Pika pika! A shiny day for a push.' }), ROWS, COLUMNS),
+    'evolving.svg': renderScene(view({ save: sceneSave(7, 16, { evolution: { to: 8 }, expBySource: TINKERER }), bubble: null, evolving: true }), ROWS, COLUMNS),
     'panel.svg': renderPanel({ ...panelView, tab: 'buddy' }),
     'panel-box.svg': renderPanel({ ...panelView, tab: 'box' }),
   }
