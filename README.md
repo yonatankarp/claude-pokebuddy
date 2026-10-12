@@ -30,7 +30,7 @@ To update, run `claude plugin update pokebuddy@pokebuddy` and restart Claude Cod
 
 <p><img src="docs/images/panel-box.svg" width="49%" alt="the box, with a Pokémon to make your buddy"> <img src="docs/images/compact.svg" width="49%" alt="the compact one-line view"></p>
 
-In the desktop app and VS Code your Pokémon idles, breathing, twitching and looking round, with its Pokémon Mystery Dungeon idle animation. The Buddy tab is a Game Boy summary screen, the Pokédex is the red device, with its lens, lights and screen, and the box is a PC box with a card for each Pokémon:
+In the desktop app and VS Code the Buddy tab is a Game Boy summary screen, the Pokédex is the red device, with its lens, lights and screen, and the box is a PC box with a card for each Pokémon:
 
 ![the Buddy tab in the desktop app: Pikachu on a cream summary screen with its type, skills and next stones](docs/images/desktop-buddy.svg)
 
@@ -155,6 +155,6 @@ Uninstalling with `/plugin uninstall pokebuddy` deletes your save, and there is 
 
 ## Disclaimer and credits
 
-Pokémon names, sprites and Pokédex text are trademarks and copyrights of Nintendo, Game Freak and The Pokémon Company and are not covered by this project's licence. This is an unofficial fan project. Pokédex data and sprites come from [PokeAPI](https://pokeapi.co) and the PokeAPI sprites repository. The idle animations are Pokémon Mystery Dungeon sprites from [PMDCollab SpriteCollab](https://github.com/PMDCollab/SpriteCollab), shared under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/); their artists are listed in [plugin/SPRITE-CREDITS.md](plugin/SPRITE-CREDITS.md).
+Pokémon names, sprites and Pokédex text are trademarks and copyrights of Nintendo, Game Freak and The Pokémon Company and are not covered by this project's licence. This is an unofficial fan project. Pokédex data and sprites come from [PokeAPI](https://pokeapi.co) and the PokeAPI sprites repository.
 
 Want to help build it? See [CONTRIBUTING.md](CONTRIBUTING.md).
