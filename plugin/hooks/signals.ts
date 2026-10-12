@@ -204,26 +204,51 @@ export function checkKey(tokens: readonly string[]): string {
 /** An older build's key (the whole normalised command) as this build keys it. */
 export const rekeyCheck = (key: string) => checkKey(key.split(/\s+/).filter(Boolean))
 
+// What git and gh print only when a commit, a push or a PR happened: proof where the exit code cannot
+// tell, as in `git commit -m x && git push | tail -3; git log`, the way Claude often chains them.
+const COMMITTED = /^\[[^\]\n]* [0-9a-f]{7,40}\] /gm
+const PUSHED = /^\s*(?:[+*] )?(?:[0-9a-f]{7,40}\.\.\.?[0-9a-f]{7,40}|\[new (?:branch|tag)\])\s+\S+\s+->\s+\S+/gm
+// gh prints a new PR's URL alone on its line. It does for an existing one too, after "already exists:".
+const PR_OPENED = /^https:\/\/\S+\/pull\/\d+$/gm
+const proofs = (re: RegExp, text: string) => text.match(re)?.length ?? 0
+
 function bashSignals(command: string, ok: boolean, resultText: string): Signal[] {
   const raw = splitRaw(command)
-  if (raw.slice(0, -1).some(s => s.sep === '||' || s.sep === ';' || s.sep === '\n' || s.sep === '&')) return []
-  if (raw[raw.length - 1]?.sep === '&') return []
+  // The exit code speaks for every part only when the parts are joined by && and nothing runs in the background.
+  const isChained = raw.slice(0, -1).some(s => s.sep === '||' || s.sep === ';' || s.sep === '\n' || s.sep === '&') || raw[raw.length - 1]?.sep === '&'
   const segs = raw.map(s => ({ seg: normalise(s.tokens), pipedOut: s.sep === '|' })).filter(s => s.seg.length > 0)
   const real = segs.filter(s => s.seg[0] !== 'cd')
   const out: Signal[] = []
+  // Each kind: how many parts ran it, and how many of those the exit code vouches for.
+  const ran = { commit: 0, push: 0, pr: 0 }
+  const vouched = { commit: 0, push: 0, pr: 0 }
   for (const { seg, pipedOut } of real) {
-    if (pipedOut) continue
+    const isVouched = ok && !isChained && !pipedOut
     const cmd = seg[0]!
+    let kind: keyof typeof ran | null = null
     if (cmd === 'git') {
       const { sub, args } = gitArgs(seg)
-      if (!ok) continue
-      if (sub === 'commit' && !hasFlag(args, ['--dry-run', '--allow-empty'])) out.push({ kind: 'commit' })
-      else if (sub === 'push' && !hasFlag(args, ['--dry-run', '-n']) && !resultText.includes('Everything up-to-date')) out.push({ kind: 'push' })
+      if (sub === 'commit' && !hasFlag(args, ['--dry-run', '--allow-empty'])) kind = 'commit'
+      else if (sub === 'push' && !hasFlag(args, ['--dry-run', '-n']) && !resultText.includes('Everything up-to-date')) kind = 'push'
     } else if (cmd === 'gh') {
-      if (ok && seg[1] === 'pr' && seg[2] === 'create') out.push({ kind: 'pr' })
-    } else if (isCheck(seg) && (ok || segs.length === 1)) {
+      if (seg[1] === 'pr' && seg[2] === 'create') kind = 'pr'
+    } else if (!isChained && !pipedOut && isCheck(seg) && (ok || segs.length === 1)) {
       out.push({ kind: 'check', key: checkKey(seg), ok })
     }
+    if (kind) {
+      ran[kind]++
+      if (isVouched) vouched[kind]++
+    }
+  }
+  const proven = {
+    commit: proofs(COMMITTED, resultText),
+    push: proofs(PUSHED, resultText),
+    pr: resultText.includes('already exists') ? 0 : proofs(PR_OPENED, resultText),
+  }
+  for (const kind of ['commit', 'push', 'pr'] as const) {
+    // The exit code's word, or the output's where it says more, never more than the parts that ran.
+    const n = Math.max(vouched[kind], Math.min(ran[kind], proven[kind]))
+    for (let i = 0; i < n; i++) out.push({ kind })
   }
   return out
 }
