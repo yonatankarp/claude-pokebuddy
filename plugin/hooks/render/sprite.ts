@@ -50,13 +50,13 @@ export function spriteRows(sprite: Sprite, isShiny: boolean): Run[][] {
   return rows
 }
 
-/** The sprite as SVG markup, one rect per same-colour horizontal run, for surfaces that draw `Svg`. */
-export function spriteSvg(sprite: Sprite, isShiny: boolean): string {
-  const { w, h } = sprite
+/** Rects for rows `from` to `to` of the sprite, one per same-colour horizontal run. */
+function spriteRects(sprite: Sprite, isShiny: boolean, from = 0, to = sprite.h): string {
+  const { w } = sprite
   const indexes = pixels(sprite)
   const pal = isShiny ? sprite.shiny : sprite.palette
   const rects: string[] = []
-  for (let y = 0; y < h; y++) {
+  for (let y = from; y < to; y++) {
     for (let x = 0; x < w;) {
       const k = indexes[y * w + x] ?? 0
       let end = x + 1
@@ -66,7 +66,53 @@ export function spriteSvg(sprite: Sprite, isShiny: boolean): string {
       x = end
     }
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" shape-rendering="crispEdges">${rects.join('')}</svg>`
+  return rects.join('')
+}
+
+/** The sprite as SVG markup, one rect per same-colour horizontal run, for surfaces that draw `Svg`. */
+export function spriteSvg(sprite: Sprite, isShiny: boolean): string {
+  const { w, h } = sprite
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" shape-rendering="crispEdges">${spriteRects(sprite, isShiny)}</svg>`
+}
+
+// The idle loop, a quarter second a step, mostly rest: [steps, turned, hop, lean, breath] in whole pixels.
+const IDLE: [number, 0 | 1, number, number, number][] = [
+  [6, 0, 0, 0, 0], [2, 0, 0, 0, 1], [4, 0, 0, 0, 0], [2, 0, 0, 0, 1], [3, 0, 0, 0, 0],
+  [2, 0, 0, -1, 0], [1, 0, 0, 0, 0], [2, 0, 0, 1, 0], [2, 0, 0, 0, 0],
+  [1, 0, -2, 0, 0], [1, 0, 0, 0, 1], [2, 0, 0, 0, 0],
+  [4, 1, 0, 0, 0], [1, 1, 0, 0, 1], [3, 0, 0, 0, 0],
+]
+const IDLE_STEP = 0.25
+const IDLE_STEPS = IDLE.reduce((n, [steps]) => n + steps, 0)
+/** Clear pixels around the idle sprite: one each side for the lean, two above for the hop. */
+export const IDLE_MARGIN = { x: 1, top: 2 }
+
+/** An `animateTransform` stepping through the idle loop, `value` naming each pose's transform. */
+function idleMotion(type: 'translate' | 'scale', value: (pose: (typeof IDLE)[number]) => string, begin: number): string {
+  let at = 0
+  const keyTimes = IDLE.map(([steps]) => { const t = at / IDLE_STEPS; at += steps; return +t.toFixed(4) })
+  return `<animateTransform attributeName="transform" type="${type}" calcMode="discrete" values="${IDLE.map(value).join(';')}"` +
+    ` keyTimes="${keyTimes.join(';')}" dur="${IDLE_STEPS * IDLE_STEP}s" begin="-${begin}s" repeatCount="indefinite"/>`
+}
+
+/**
+ * The sprite breathing, leaning, hopping and turning round, as SMIL a surface plays in an interactive Svg: the rows above
+ * its waist move on their own, all in whole pixels so it stays crisp. Unanimated, as a still image, it is the plain sprite.
+ * `seed` sets where in the loop it starts, so a box of them does not move as one.
+ */
+export function idleSpriteSvg(sprite: Sprite, isShiny: boolean, seed: number): string {
+  const { w, h } = sprite
+  const waist = Math.round(h * 0.6)
+  const begin = +((seed * 1.37) % (IDLE_STEPS * IDLE_STEP)).toFixed(2)
+  const { x: mx, top } = IDLE_MARGIN
+  // A turn is a mirror about the sprite's middle: moved across its width, then flipped.
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-mx} ${-top} ${w + 2 * mx} ${h + top}" width="${w + 2 * mx}" height="${h + top}" shape-rendering="crispEdges">` +
+    `<g>${idleMotion('translate', ([, turned]) => `${turned * w} 0`, begin)}` +
+    `<g>${idleMotion('scale', ([, turned]) => (turned ? '-1 1' : '1 1'), begin)}` +
+    `<g>${idleMotion('translate', ([, , hop]) => `0 ${hop}`, begin)}` +
+    `<g>${spriteRects(sprite, isShiny, waist, h)}</g>` +
+    `<g>${idleMotion('translate', ([, , , lean, breath]) => `${lean} ${breath}`, begin)}${spriteRects(sprite, isShiny, 0, waist)}</g>` +
+    '</g></g></g></svg>'
 }
 
 /** Hand-drawn pixel art as SVG markup: one string per row, one character per pixel, `colors` naming each; other characters are clear. */

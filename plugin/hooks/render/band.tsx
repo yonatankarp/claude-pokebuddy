@@ -3,7 +3,7 @@ import { skillStats } from '../commands'
 import { species } from '../data/dex'
 import type { Save } from '../state'
 import type { Species } from '../data/types'
-import { artSize, expBar, fitArt, spriteRows, spriteSvg, TYPE_COLOR, type Run } from './sprite'
+import { artSize, expBar, fitArt, IDLE_MARGIN, idleSpriteSvg, spriteRows, TYPE_COLOR, type Run } from './sprite'
 
 /** `showFull` is the full view, by choice or for a level-up or evolution flash. */
 export type BandView = { save: Save; bubble: string | null; showFull: boolean; evolving: boolean }
@@ -126,13 +126,16 @@ export function bubbleBox({ Box, Text }: BandElements, side: Side) {
   )
 }
 
+/** Colours for text on a screen of its own colour, where dimming the theme's text would hide it: text, labels, empty bars. */
+export type Ink = { text: string; faded: string; track: string }
+
 /** The EXP bar: the app's font is proportional, so its empty half is a dimmed ▰, as ▱ is a different width there. */
-export function expBarTexts({ Text }: BandElements, save: Save, width: number, color: string, isApp: boolean) {
+export function expBarTexts({ Text }: BandElements, save: Save, width: number, color: string, isApp: boolean, ink?: Ink) {
   const bar = expBar(save, width)
   const filled = isApp ? bar.replaceAll('▱', '') : bar
   return [
     <Text key="bar" color={color} wrap="truncate-end">{filled}</Text>,
-    ...(isApp ? [<Text key="bar-empty" dimColor wrap="truncate-end">{'▰'.repeat(bar.length - filled.length)}</Text>] : []),
+    ...(isApp ? [<Text key="bar-empty" color={ink?.track} dimColor={!ink} wrap="truncate-end">{'▰'.repeat(bar.length - filled.length)}</Text>] : []),
   ]
 }
 
@@ -141,11 +144,12 @@ export function buddyArt(els: BandElements, save: Save, isApp: boolean) {
   return speciesArt(els, species(save.species), save.isShiny, isApp)
 }
 
-/** A species' icon: an SVG in the app, half-block rows in the terminal. */
+/** A species' icon: an SVG idling in the app (interactive, so its animation plays), half-block rows in the terminal. */
 export function speciesArt(els: BandElements, sp: Species, isShiny: boolean, isApp: boolean, scale = SVG_SCALE) {
   const { icon } = sp
   return isApp && els.Svg
-    ? <els.Svg key="svg" source={spriteSvg(icon, isShiny)} alt={`${sp.name} sprite`} width={icon.w * scale} height={icon.h * scale} />
+    ? <els.Svg key="svg" source={idleSpriteSvg(icon, isShiny, sp.id)} alt={`${sp.name} sprite`} isInteractive
+      width={(icon.w + 2 * IDLE_MARGIN.x) * scale} height={(icon.h + IDLE_MARGIN.top) * scale} />
     : drawRows(els, spriteRows(icon, isShiny))
 }
 
@@ -206,23 +210,23 @@ function skillsWidth(save: Save): number {
  * rows, because the desktop font is proportional and padding would not line the bars up. The terminal ends
  * each bar in ▱ like the EXP bar; the app in a dimmed ▰, as ▱ is a different width in its font.
  */
-export function skillColumns({ Box, Text }: BandElements, save: Save, color: string, isApp: boolean) {
+export function skillColumns({ Box, Text }: BandElements, save: Save, color: string, isApp: boolean, ink?: Ink) {
   const stats = skillStats(save)
   return (
     <Box key="skills" flexDirection="row" marginLeft={2}>
-      <Box flexDirection="column">{stats.map(k => <Text key={k.name} dimColor>{k.name}</Text>)}</Box>
+      <Box flexDirection="column">{stats.map(k => <Text key={k.name} color={ink?.faded} dimColor={!ink}>{k.name}</Text>)}</Box>
       <Box flexDirection="column" marginLeft={1}>
         {stats.map(k => {
           const filled = Math.round(k.value / 10)
           return (
             <Box key={k.name} flexDirection="row">
               <Text color={color}>{'▰'.repeat(filled)}</Text>
-              {isApp ? <Text dimColor>{'▰'.repeat(10 - filled)}</Text> : <Text color={color}>{'▱'.repeat(10 - filled)}</Text>}
+              {isApp ? <Text color={ink?.track} dimColor={!ink}>{'▰'.repeat(10 - filled)}</Text> : <Text color={color}>{'▱'.repeat(10 - filled)}</Text>}
             </Box>
           )
         })}
       </Box>
-      <Box flexDirection="column" marginLeft={1}>{stats.map(k => <Text key={k.name}>{String(k.value)}</Text>)}</Box>
+      <Box flexDirection="column" marginLeft={1}>{stats.map(k => <Text key={k.name} color={ink?.text}>{String(k.value)}</Text>)}</Box>
     </Box>
   )
 }
