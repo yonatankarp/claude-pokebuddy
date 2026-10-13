@@ -18,6 +18,9 @@ let surfaces: ('terminal' | 'desktop' | 'mobile' | 'vscode')[] = []
 
 const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
 
+/** Text drawn beneath the band, standing for another buddy's band; null draws nothing there. */
+let beneath: string | null = null
+
 /**
  * What lies beneath the mod in a session, answered in memory: `$.store` (the kit's `$` has no
  * `store` noun, so the test keeps the map to read what the mod wrote), the session's start,
@@ -43,6 +46,9 @@ function world(on: On, entries: Record<string, unknown> = {}, sid = 'S1') {
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('ui.toast', async (_$, e) => { toasts.push(e.text); return { value: undefined } })
   on('ui.invalidate', async () => ({ value: undefined }))
+  // the drawing beneath the band: empty, as the engine's own band is, or another buddy's when a test sets `beneath`
+  beneath = null
+  on('ui.render', async ($, e) => { const { Box, Text } = $.ui.resolve(e); return beneath ? <Text>{beneath}</Text> : <Box /> })
   return store
 }
 
@@ -700,6 +706,23 @@ describe('register', () => {
         expect(await ui.find({ type: 'Text', text: /Lv1/ })).toBeDefined()
         await ui.unmount()
       }
+    })
+  }
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    test(`another buddy's band beneath stays, under this one (${surface})`, async ($, on) => {
+      world(on, { save: freshSave([1, 2, 3, 4]) })
+      beneath = 'BENEATH'
+      mock.clock(on)
+      await start($)
+      const ui = await $.ui.mount({
+        plugin: 'pokebuddy', surface, component: 'AbovePrompt',
+        props: { hasSurvey: false, isWorking: false, maxRows: 60, bodyColumns: 195, scroll: { offset: 0, bodyRows: 60 }, view: {} },
+        viewport: { columns: 200, rows: 60 },
+      })
+      expect(await ui.find({ type: 'Text', text: /Lv1/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: 'BENEATH' })).toBeDefined()
+      await ui.unmount()
     })
   }
 

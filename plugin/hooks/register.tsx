@@ -332,6 +332,9 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey) return next(e)
     const view = await drawView($)
     if (!view) return next(e)
-    return band($.ui.resolve(e), view, e.props.maxRows, e.props.bodyColumns, e.viewport?.isFullscreen === true, e.surface)
+    const els = $.ui.resolve(e)
+    const ours = band(els, view, e.props.maxRows, e.props.bodyColumns, e.viewport?.isFullscreen === true, e.surface)
+    // Another buddy's band (piposh-buddy's) or the engine's own stays, under ours, so both can be on at once.
+    return <els.Box flexDirection="column">{ours}{await next(e)}</els.Box>
   })
 }

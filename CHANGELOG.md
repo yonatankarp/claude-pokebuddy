@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.3 (2026-10-13)
+
+- Another buddy above the prompt no longer hides yours, or yours it. Pokebuddy draws its band and keeps whatever another mod (such as piposh-buddy) draws there, under it, so both show at once.
+
 ## 1.4.2 (2026-10-12)
 
 - Your buddy's speech no longer stops mid-word. A line too long for the bubble used to be cut at 80 characters wherever that fell (`Let's see if you ca`); now it ends on the last whole sentence that fits, or on a whole word and an ellipsis. The speech model is also asked to stay under 70 characters.
