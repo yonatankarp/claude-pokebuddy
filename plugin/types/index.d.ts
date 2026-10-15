@@ -6,6 +6,9 @@ export type Mon = {
   nickname: string | null
   level: number
   exp: number
+  /** EXP this Pokémon earned, all-time and by source (its skills). Box entries from before them read as 0 and {}. */
+  lifetimeExp: number
+  expBySource: Partial<Record<'prompt' | 'tool' | 'active' | 'config' | 'commit' | 'push' | 'green' | 'judge' | 'feed', number>>
 }
 
 /**

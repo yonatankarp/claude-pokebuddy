@@ -189,7 +189,7 @@ const ROWS = 20, COLUMNS = 100
 function boxOf(buddy: number, ids: number[]): Pick<Save, 'box' | 'caught'> {
   const box = ids.map((id, i) => {
     const level = [7, 4, 2][i] ?? 1
-    return { species: id, isShiny: i === 1, personality: 'brave' as const, nickname: null, level, exp: expForLevel(species(id).growth, level) }
+    return { species: id, isShiny: i === 1, personality: 'brave' as const, nickname: null, level, exp: expForLevel(species(id).growth, level), lifetimeExp: 0, expBySource: {} }
   })
   return { box, caught: [buddy, ...ids] }
 }

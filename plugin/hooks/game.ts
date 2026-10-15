@@ -3,6 +3,7 @@ import { stoneName, type Stone } from './data/types'
 import { levelEvolution, stoneEvolution, stonesEarned, tradeEvolution, type Counters } from './evolution'
 import { expForLevel, levelForExp, MAX_LEVEL } from './exp'
 import { previousDate, type LocalTime } from './localtime'
+import { boosted } from './skills'
 import type { Save } from './state'
 import type { scoreTally, Source } from './tally'
 
@@ -16,7 +17,8 @@ export type GameEvent =
 
 type Result = { save: Save; events: GameEvent[] }
 
-export function applyExp(save: Save, gained: Partial<Record<Source, number>>): Result {
+export function applyExp(save: Save, raw: Partial<Record<Source, number>>): Result {
+  const gained = boosted(save, raw)
   const clean = (n: number | undefined) => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0)
   const total = Object.values(gained).reduce((a, n) => a + clean(n), 0)
   const expBySource = { ...save.expBySource }

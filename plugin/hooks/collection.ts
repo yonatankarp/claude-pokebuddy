@@ -1,7 +1,9 @@
 import { species } from './data/dex'
+import type { Species } from './data/types'
 import { expForLevel } from './exp'
 import type { GameEvent } from './game'
-import { rollFrom } from './roll'
+import { rollFrom, rollWeight } from './roll'
+import { typeBias } from './skills'
 import { START_LEVEL, type Mon, type Save } from './state'
 
 /** Wild Pokémon a day, so a long session does not flood the box. */
@@ -25,18 +27,21 @@ export function encountersRolled(work: { greens: number; commits: number; usedTo
 
 /**
  * Up to `n` wild Pokémon, caught at once and boxed at the start level, within the day's cap. `seed` gives
- * each its roll; `isLucky` (a feed streak) gives it a second chance at being shiny.
+ * each its roll, the active Pokémon's skills pulling their types; `isLucky` (a feed streak) gives it a second
+ * chance at being shiny.
  */
 export function catchWild(save: Save, n: number, seed: () => number[], date: string, isLucky = false): { save: Save; events: GameEvent[] } {
   const met = save.encounters.date === date ? save.encounters.count : 0
   const room = Math.max(0, Math.min(n, ENCOUNTERS_PER_DAY - met))
   if (room === 0) return { save, events: [] }
   const caught: Mon[] = []
+  const bias = typeBias(save)
+  const weigh = (s: Species) => rollWeight(s) * bias(s)
   for (let i = 0; i < room; i++) {
-    const roll = rollFrom(seed())
+    const roll = rollFrom(seed(), weigh)
     const isShiny = roll.isShiny || (isLucky && rollFrom(seed()).isShiny)
     const level = START_LEVEL
-    caught.push({ species: roll.species, isShiny, personality: roll.personality, nickname: null, level, exp: expForLevel(species(roll.species).growth, level) })
+    caught.push({ species: roll.species, isShiny, personality: roll.personality, nickname: null, level, exp: expForLevel(species(roll.species).growth, level), lifetimeExp: 0, expBySource: {} })
   }
   return {
     save: {
@@ -51,7 +56,8 @@ export function catchWild(save: Save, n: number, seed: () => number[], date: str
 
 /** The active Pokémon as the box keeps it. */
 function boxed(save: Save): Mon {
-  return { species: save.species, isShiny: save.isShiny, personality: save.personality, nickname: save.nickname, level: save.level, exp: save.exp }
+  return { species: save.species, isShiny: save.isShiny, personality: save.personality, nickname: save.nickname, level: save.level, exp: save.exp,
+    lifetimeExp: save.lifetimeExp, expBySource: save.expBySource }
 }
 
 /** The box entry `query` names: its number (1-based) or a nickname or species name, any case. */

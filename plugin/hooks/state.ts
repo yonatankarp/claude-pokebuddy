@@ -33,6 +33,7 @@ const isInt = (v: unknown, lo: number, hi: number) => typeof v === 'number' && N
 const isNum = (v: unknown, lo: number, hi = Infinity): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi
 const isDate = (v: unknown) => v === null || (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v))
 const COUNTERS = ['greens', 'commits', 'configEdits', 'feedRun']
+const isExpBySource = (v: unknown) => isObj(v) && Object.entries(v).every(([k, n]) => !(SOURCES as readonly string[]).includes(k) || isNum(n, 0))
 
 /**
  * The shape version 1 promises. Unknown keys inside expBySource and bag are ignored (kept, never read),
@@ -51,7 +52,7 @@ function validSave(raw: Record<string, unknown>): boolean {
   if (!isNum(raw.lifetimeExp, 0)) return false
   if (typeof raw.isShiny !== 'boolean' || !(PERSONALITIES as readonly unknown[]).includes(raw.personality)) return false
   if (raw.nickname !== null && (typeof raw.nickname !== 'string' || [...raw.nickname].length > NICKNAME_MAX)) return false
-  if (!isObj(raw.expBySource) || !Object.entries(raw.expBySource).every(([k, v]) => !(SOURCES as readonly string[]).includes(k) || isNum(v, 0))) return false
+  if (!isExpBySource(raw.expBySource)) return false
   if (!isObj(raw.bag) || !Object.entries(raw.bag).every(([k, v]) => !(STONES as readonly string[]).includes(k) || isInt(v, 0, Number.MAX_SAFE_INTEGER))) return false
   if (!isObj(raw.counters) || !COUNTERS.every(k => isInt((raw.counters as Record<string, unknown>)[k], 0, Number.MAX_SAFE_INTEGER))) return false
   if (!isObj(raw.checks) || !Object.values(raw.checks).every(v => typeof v === 'boolean')) return false
@@ -72,6 +73,7 @@ function validMon(m: unknown): m is Mon {
   const growth = species(m.species as number).growth
   if (!isNum(m.exp, 0, expForLevel(growth, 100)) || levelForExp(growth, m.exp) !== m.level) return false
   if (typeof m.isShiny !== 'boolean' || !(PERSONALITIES as readonly unknown[]).includes(m.personality)) return false
+  if ((m.lifetimeExp !== undefined && !isNum(m.lifetimeExp, 0)) || (m.expBySource !== undefined && !isExpBySource(m.expBySource))) return false
   return m.nickname === null || (typeof m.nickname === 'string' && [...m.nickname].length <= NICKNAME_MAX)
 }
 
@@ -101,6 +103,7 @@ function normalise(save: Save): Save {
   const raw = save as Partial<Pick<Save, 'box' | 'caught' | 'encounters'>>
   const box = Array.isArray(raw.box) ? raw.box.filter(validMon).map(m => ({
     species: m.species, isShiny: m.isShiny, personality: m.personality, nickname: m.nickname, level: m.level, exp: m.exp,
+    lifetimeExp: m.lifetimeExp ?? 0, expBySource: m.expBySource ?? {},
   })) : []
   const caught = Array.isArray(raw.caught) ? raw.caught.filter(n => isInt(n, 1, 151)) : []
   const encounters = isObj(raw.encounters) && isDate(raw.encounters.date) && isInt(raw.encounters.count, 0, Number.MAX_SAFE_INTEGER)

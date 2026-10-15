@@ -6,6 +6,7 @@ import { TRADE_LEVEL } from './evolution'
 import { expForLevel, MAX_LEVEL } from './exp'
 import { cancelEvolution, feed, useStone, type GameEvent } from './game'
 import { localTime, previousDate } from './localtime'
+import { expBonus, skillStats } from './skills'
 import { NICKNAME_MAX, type Save } from './state'
 import type { Source } from './tally'
 
@@ -29,24 +30,6 @@ export function parseStone(text: string): Stone | null {
 const SOURCE_NAMES: Record<Source, string> = {
   prompt: 'prompts', tool: 'tool calls', active: 'active time', config: 'config edits', commit: 'commits',
   push: 'pushes and PRs', green: 'green checks', judge: 'session judge', feed: 'feeding',
-}
-
-/** The buddy's skills, each grown from the EXP of the work behind it; feeding grows none. */
-const SKILLS: readonly { name: string; from: readonly Source[] }[] = [
-  { name: 'DEBUGGING', from: ['green'] },
-  { name: 'SHIPPING', from: ['commit', 'push'] },
-  { name: 'HACKING', from: ['tool'] },
-  { name: 'FOCUS', from: ['prompt', 'active'] },
-  { name: 'TINKERING', from: ['config'] },
-  { name: 'WISDOM', from: ['judge'] },
-]
-
-/** Each skill 0 to 99: the square root of its EXP, so the first sessions show and the rest takes real work. */
-export function skillStats(save: Save): { name: string; value: number; exp: number; from: readonly Source[] }[] {
-  return SKILLS.map(({ name, from }) => {
-    const exp = from.reduce((n, src) => n + (save.expBySource[src] ?? 0), 0)
-    return { name, value: Math.min(99, Math.floor(Math.sqrt(exp))), exp, from }
-  })
 }
 
 /** The feed streak as of `today`: a run whose last feed was before yesterday is already broken. */
@@ -80,14 +63,14 @@ export function statsText(save: Save, today: string): string {
   const toNext = save.level >= MAX_LEVEL ? 'max level' : `${expForLevel(sp.growth, save.level + 1) - save.exp} EXP to Lv ${save.level + 1}`
   const bag = STONES.filter(s => save.bag[s]).map(s => `${stoneName(s)} ×${save.bag[s]}`).join(', ') || 'empty'
   const skills = skillStats(save).map(k =>
-    `  ${k.name.padEnd(9)} ${String(k.value).padStart(2)}  ${k.exp} EXP from ${k.from.map(src => SOURCE_NAMES[src]).join(', ')}`)
+    `  ${k.name.padEnd(9)} ${String(k.value).padStart(2)}  ${k.exp} EXP from ${k.from.map(src => SOURCE_NAMES[src]).join(', ')}; +${expBonus(k.value)}% EXP, draws ${k.types.join('/').toUpperCase()}`)
   const fed = save.expBySource.feed ?? 0
   const streak = feedStreak(save, today)
   const hints = evolutionHints(sp)
   return [
     `${save.nickname ? `${save.nickname} (${sp.name})` : sp.name}${save.isShiny ? ' ★' : ''}  Lv ${save.level}  ${save.personality}`,
     `${toNext}. Lifetime EXP ${save.lifetimeExp}.`,
-    'Skills, grown by the EXP that levels it up:', ...skills,
+    'Skills, grown by the EXP that levels it up. Each adds EXP to its work and draws wild Pokémon of its types:', ...skills,
     ...(fed ? [`  Feeding: ${fed} EXP`] : []),
     ...(hints.length ? hints : ['Does not evolve.']),
     `Bag: ${bag}`,
@@ -202,7 +185,7 @@ export async function runCommand(io: CommandIO, args: string): Promise<string> {
       const m = s.box[i]!
       if (word.toLowerCase() !== 'confirm') return `This lets ${m.nickname ?? species(m.species).name} (Lv ${m.level}) go for good. Run /${COMMAND} release ${i + 1} confirm to go ahead.`
       // The entry read above, matched whole: a box another session changed meanwhile never loses the wrong one.
-      const same = (b: typeof m) => (Object.keys(m) as (keyof typeof m)[]).every(k => b[k] === m[k])
+      const same = (b: typeof m) => JSON.stringify(b) === JSON.stringify(m)
       const r = await io.mutate(cur => {
         const at = cur.box[i] && same(cur.box[i]) ? i : cur.box.findIndex(same)
         return at === -1 ? { save: cur, released: undefined } : release(cur, at)

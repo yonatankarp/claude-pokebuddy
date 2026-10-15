@@ -938,6 +938,6 @@ describe('register', () => {
     mock.clock(on, { now: NOON })
     await start($)
     expect((await $.command.run(run('release 2 confirm'))).text).toBe('Bye, GASTLY!')
-    expect((store.get('save') as { box: { isShiny: boolean }[] }).box).toEqual([{ ...gastly, isShiny: true }])
+    expect((store.get('save') as { box: { isShiny: boolean }[] }).box).toEqual([{ ...gastly, isShiny: true, lifetimeExp: 0, expBySource: {} }])
   })
 })

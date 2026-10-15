@@ -13,13 +13,14 @@ export function rollWeight(s: Species): number {
   return s.evolutions.length === 0 ? 0.33 : 1
 }
 
-export function rollFrom(seed: readonly number[]): Roll {
+/** `weigh` defaults to the plain rates; a wild roll passes the skills' pull on top. */
+export function rollFrom(seed: readonly number[], weigh: (s: Species) => number = rollWeight): Roll {
   const rand = sfc32(seed)
-  const total = POKEDEX.reduce((a, s) => a + rollWeight(s), 0)
+  const total = POKEDEX.reduce((a, s) => a + weigh(s), 0)
   let pick = rand() * total
   let chosen = POKEDEX[0]!
   for (const s of POKEDEX) {
-    const w = rollWeight(s)
+    const w = weigh(s)
     if (w === 0) continue
     chosen = s
     if (pick < w) break

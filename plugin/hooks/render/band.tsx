@@ -1,5 +1,5 @@
 import type { Elements, RenderSurface } from 'claude-code'
-import { skillStats } from '../commands'
+import { skillStats } from '../skills'
 import { species } from '../data/dex'
 import type { Save } from '../state'
 import type { Species } from '../data/types'
