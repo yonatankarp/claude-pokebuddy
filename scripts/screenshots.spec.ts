@@ -11,7 +11,7 @@ test('a scene is an SVG with the species name and the icon drawn in pixel rects'
 })
 
 test('the panel draws its buttons as the terminal does: [ label ], or key: label when plain', () => {
-  const save = { ...sceneSave(4, 12), box: [{ species: 92, isShiny: false, personality: 'brave' as const, nickname: null, level: 1, exp: 0 }] }
+  const save = { ...sceneSave(4, 12), box: [{ species: 92, isShiny: false, personality: 'brave' as const, nickname: null, level: 1, exp: 0, lifetimeExp: 0, expBySource: {} }] }
   const view = { save, releasing: null, note: null, dex: { page: 0, entry: null }, today: '2026-10-11', columns: 96 }
   // The SVG writes each word as its own <text>.
   const words = (svg: string) => [...svg.matchAll(/>([^<>]+)<\/text>/g)].map(m => m[1]).join(' ')
@@ -20,7 +20,7 @@ test('the panel draws its buttons as the terminal does: [ label ], or key: label
 })
 
 test('the desktop panel draws the Pokédex case with its lens and the box as cards with their sprites', () => {
-  const save = { ...sceneSave(4, 12), box: [{ species: 92, isShiny: false, personality: 'brave' as const, nickname: null, level: 1, exp: 0 }], caught: [4, 7, 92] }
+  const save = { ...sceneSave(4, 12), box: [{ species: 92, isShiny: false, personality: 'brave' as const, nickname: null, level: 1, exp: 0, lifetimeExp: 0, expBySource: {} }], caught: [4, 7, 92] }
   const view = { save, releasing: null, note: null, dex: { page: 0, entry: null }, today: '2026-10-11', columns: 96 }
   const dex = renderDesktopPanel({ ...view, tab: 'dex' })
   assert.match(dex, /^<svg /)

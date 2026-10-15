@@ -3,6 +3,7 @@ import { catchWild, ENCOUNTERS_PER_DAY, encountersRolled, findInBox, release, sw
 import { boxText } from '../hooks/commands'
 import { species } from '../hooks/data/dex'
 import { expForLevel } from '../hooks/exp'
+import { typeBias } from '../hooks/skills'
 import { freshSave, parseSave, type Mon, type Save } from '../hooks/state'
 
 /** Hands out the given rolls in order. */
@@ -10,7 +11,7 @@ const dice = (...rolls: number[]) => () => rolls.shift() ?? 0.99
 let n = 0
 const seeds = () => [++n, 7, 7, 7]
 const mon = (id: number, level = 1, extra: Partial<Mon> = {}): Mon =>
-  ({ species: id, isShiny: false, personality: 'brave', nickname: null, level, exp: expForLevel(species(id).growth, level), ...extra })
+  ({ species: id, isShiny: false, personality: 'brave', nickname: null, level, exp: expForLevel(species(id).growth, level), lifetimeExp: 0, expBySource: {}, ...extra })
 const cubone = (): Save => ({ ...freshSave([1, 2, 3, 4]), species: 104, level: 6, exp: expForLevel(species(104).growth, 6) })
 const reparse = (s: unknown) => parseSave(JSON.parse(JSON.stringify(s)))
 
@@ -56,6 +57,40 @@ describe('collection', () => {
     expect([r.save.species, r.save.level, r.save.nickname]).toEqual([92, 3, null])
     expect(r.save.box).toEqual([mon(104, 6, { personality: s.personality, nickname: 'Bones' })])
     expect(reparse(r.save).kind).toBe('ok')
+  })
+
+  test('skills and lifetime EXP belong to each Pokémon, not the trainer', () => {
+    const s = { ...cubone(), expBySource: { green: 400 }, lifetimeExp: 400, box: [mon(92, 3, { expBySource: { commit: 25 }, lifetimeExp: 25 })] }
+    const r = switchTo(s, 0)
+    expect([r.save.expBySource, r.save.lifetimeExp]).toEqual([{ commit: 25 }, 25])
+    expect([r.save.box[0]!.expBySource, r.save.box[0]!.lifetimeExp]).toEqual([{ green: 400 }, 400])
+    const back = switchTo(r.save, 0)
+    expect([back.save.expBySource, back.save.lifetimeExp]).toEqual([{ green: 400 }, 400])
+    expect(catchWild(s, 1, seeds, '2026-10-11').save.box[1]).toMatchObject({ expBySource: {}, lifetimeExp: 0 })
+  })
+
+  test("the active Pokémon's skills draw wild Pokémon of their types", () => {
+    const rolls = (s: Save) => {
+      let bugs = 0
+      for (let i = 0; i < 2000; i++) {
+        const m = catchWild(s, 1, () => [i, 3, 5, 7], '2026-10-11').save.box.at(-1)!
+        if (species(m.species).types.includes('bug')) bugs++
+      }
+      return bugs
+    }
+    // DEBUGGING 50 triples Bug and Poison weights; Poison takes a share of the gain, so Bug catches about double.
+    const plain = rolls(cubone()), debugger_ = rolls({ ...cubone(), expBySource: { green: 2500 } })
+    expect(debugger_ > plain * 1.8).toBe(true)
+    expect(typeBias({ expBySource: { green: 2500 } })(species(10))).toBe(3)
+    expect(typeBias({ expBySource: { green: 2500, judge: 625 } })(species(1))).toBe(4) // Bulbasaur, grass/poison: DEBUGGING and WISDOM
+    expect(typeBias({ expBySource: { green: 2500 } })(species(4))).toBe(1)
+  })
+
+  test('a box entry from before per-Pokémon skills reads with none', () => {
+    const old = { ...cubone(), box: [{ species: 92, isShiny: false, personality: 'brave', nickname: null, level: 1, exp: 0 }] }
+    const r = reparse(old)
+    expect(r.kind === 'ok' && r.save.box[0]).toMatchObject({ expBySource: {}, lifetimeExp: 0 })
+    expect(reparse({ ...old, box: [mon(92, 1, { lifetimeExp: -1 })] })).toMatchObject({ kind: 'ok', save: { box: [] } })
   })
 
   test('no switch while evolving, and none to a place the box does not have', () => {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.0 (2026-10-15)
+
+- Each Pokémon now has its own skills and Lifetime EXP. They used to belong to the save, so switching gave the new buddy the old one's skill bars and kept only its level. A switch now swaps them along with the level, and a new catch starts with none. Past skill EXP can't be split between Pokémon, so your current buddy keeps all of it and the Pokémon already in your box start at zero.
+- Skills now do something. Each adds half its value, in percent, to the EXP of its own work: DEBUGGING 30 is +15% EXP from fixed checks, 99 about +50%. Feeding gets no bonus. Each also makes wild Pokémon of its types likelier, by 4% a point: DEBUGGING Bug and Poison, SHIPPING Water and Flying, HACKING Electric and Ghost, FOCUS Psychic and Fighting, TINKERING Fire, Rock and Ground, WISDOM Dragon and Grass. The active Pokémon's skills count, so who you train shapes what you catch. `/buddy stats` shows each skill's effect.
+
 ## 1.4.3 (2026-10-13)
 
 - Another buddy above the prompt no longer hides yours, or yours it. Pokebuddy draws its band and keeps whatever another mod (such as piposh-buddy) draws there, under it, so both show at once.
