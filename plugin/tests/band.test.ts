@@ -64,11 +64,17 @@ describe('band', () => {
     expect(hasArt(view(), 100, icon.cols - 1, true)).toBe(false)
     expect(hasArt(view({ showFull: false }), 100, 200, true)).toBe(false)
   })
-  test('off fullscreen a full view taller than half the terminal gives way to the line there, never in the app', () => {
+  test('the terminal gives way to the line when the art does not fit; the app always draws it, with the bubble beside it', () => {
     const gyarados = view({ save: { ...save, species: 130 } })
-    const rows = artSize(species(130)).rows * 2
-    expect(height(band(els, gyarados, rows - 1, 140, false))).toBe(1)
-    expect(height(band(els, gyarados, rows - 1, 140, false, 'desktop')) > 1).toBe(true)
+    const rows = artSize(species(130)).rows
+    expect(height(band(els, gyarados, rows * 2 - 1, 140, false))).toBe(1)
+    expect(height(band(els, gyarados, rows - 1, 140, true))).toBe(1)
+    expect(height(band(els, gyarados, 100, 28, true))).toBe(1)
+    for (const [maxRows, columns, isFullscreen] of [[rows * 2 - 1, 140, false], [rows - 1, 140, true], [8, 28, true]] as const) {
+      const out = band(els, gyarados, maxRows, columns, isFullscreen, 'desktop')
+      expect(height(out) > 1).toBe(true)
+      expect(bubbleBox(out)).toBeDefined()
+    }
   })
   test('evolving shows the old species name', () => {
     const out = texts(band(els, view({ evolving: true, showFull: false }), 1, 120, true))

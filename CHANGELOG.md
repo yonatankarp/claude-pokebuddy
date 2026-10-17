@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.2 (2026-10-17)
+
+- In the desktop app and VS Code your buddy's art now always shows above the prompt, with its bubble beside it. 1.5.1 lifted only one of the band's terminal limits, so a tall Pokémon such as Gyarados could still drop to the one-line view: the art also had to fit the band's rows and leave room for the bubble beside it, both measured in terminal cells. The app draws the art as an image, so none of these limits apply there now, as with piposh-buddy's band. The terminal is unchanged.
+
 ## 1.5.1 (2026-10-17)
 
 - In the desktop app and VS Code your buddy's art no longer drops to the one-line view in a shorter window. The band gave way to the line when its full view was taller than half the window, measured in terminal rows, so a taller Pokémon such as Gyarados lost its art where Magikarp had fit. The app draws the art as an image, so that limit now applies only in the terminal.

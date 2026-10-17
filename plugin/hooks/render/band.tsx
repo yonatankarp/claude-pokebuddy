@@ -87,11 +87,12 @@ export function sideBubble(sp: Species, bubble: string | null, rows: number, col
 /**
  * The band's full view: the icon with the bubble beside it if it fits, else over the line; null is the line
  * alone. Off fullscreen `maxRows` is the whole terminal, so a full view taller than half of it gives way to
- * the line; in fullscreen the engine has already capped the band's slot. Off the terminal the art is an
- * Svg, not rows, so the caller passes `isFullscreen` true there and the half never applies.
+ * the line; in fullscreen the engine has already capped the band's slot. In the app the art is an Svg, not
+ * rows, so none of that applies: the bubble always stands beside it, as piposh-buddy's does.
  */
-export function bandLayout(view: BandView, maxRows: number, columns: number, isFullscreen: boolean): Layout | null {
+export function bandLayout(view: BandView, maxRows: number, columns: number, isFullscreen: boolean, isApp = false): Layout | null {
   if (!view.showFull) return null
+  if (isApp) return { side: { width: BUBBLE_MAX, lines: view.bubble ? wrapText(view.bubble, BUBBLE_MAX - BUBBLE_FRAME) : [] } }
   const sp = species(view.save.species)
   const fits = (rows: number) => isFullscreen || rows <= maxRows / 2
   const side = sideBubble(sp, view.bubble, maxRows, columns, 1)
@@ -177,7 +178,7 @@ export function band(els: BandElements, view: BandView, maxRows: number, columns
       {isBubbleInline && inline && <Text dimColor wrap="truncate-end">{inline}</Text>}
     </Box>
   )
-  const layout = bandLayout(view, maxRows, columns, isFullscreen || isApp)
+  const layout = bandLayout(view, maxRows, columns, isFullscreen, isApp)
   if (layout === null) return line(true)
   const art = buddyArt(els, save, isApp)
   if (layout.side === null) {
