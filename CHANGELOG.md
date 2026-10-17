@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.1 (2026-10-17)
+
+- In the desktop app and VS Code your buddy's art no longer drops to the one-line view in a shorter window. The band gave way to the line when its full view was taller than half the window, measured in terminal rows, so a taller Pokémon such as Gyarados lost its art where Magikarp had fit. The app draws the art as an image, so that limit now applies only in the terminal.
+
 ## 1.5.0 (2026-10-15)
 
 - Each Pokémon now has its own skills and Lifetime EXP. They used to belong to the save, so switching gave the new buddy the old one's skill bars and kept only its level. A switch now swaps them along with the level, and a new catch starts with none. Past skill EXP can't be split between Pokémon, so your current buddy keeps all of it and the Pokémon already in your box start at zero.

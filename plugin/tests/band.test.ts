@@ -64,6 +64,12 @@ describe('band', () => {
     expect(hasArt(view(), 100, icon.cols - 1, true)).toBe(false)
     expect(hasArt(view({ showFull: false }), 100, 200, true)).toBe(false)
   })
+  test('off fullscreen a full view taller than half the terminal gives way to the line there, never in the app', () => {
+    const gyarados = view({ save: { ...save, species: 130 } })
+    const rows = artSize(species(130)).rows * 2
+    expect(height(band(els, gyarados, rows - 1, 140, false))).toBe(1)
+    expect(height(band(els, gyarados, rows - 1, 140, false, 'desktop')) > 1).toBe(true)
+  })
   test('evolving shows the old species name', () => {
     const out = texts(band(els, view({ evolving: true, showFull: false }), 1, 120, true))
     expect(out).toContain('is evolving!')
