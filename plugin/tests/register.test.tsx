@@ -799,6 +799,28 @@ describe('register', () => {
     expect((await $.command.run(run('dance'))).text).toContain('/buddy dance is not a command.\n/buddy stats')
   })
 
+  test('box and dex open the panel on their tab, dex on a caught one its entry, and as text where it cannot be placed', async ($, on) => {
+    world(on, { save: { ...pika(), caught: [], box: [{ species: 92, isShiny: false, personality: 'brave', nickname: null, level: 1, exp: 0 }] } })
+    let isPlaced = true
+    on('ui.open', async () => ({ value: isPlaced ? { isPlaced: true as const } : { isPlaced: false as const, reason: 'narrow' as never } }))
+    mock.clock(on, { now: NOON })
+    await start($)
+    const shows = async (args: string, text: string | RegExp) => {
+      expect((await $.command.run(run(args))).text).toBeUndefined()
+      const ui = await pane($, 'desktop')
+      expect(await ui.find({ type: 'Text', text })).toBeDefined()
+      await ui.unmount()
+    }
+    await shows('box', 'BOX 1')
+    await shows('dex', /OWN 2\/151/)
+    await shows('dex gastly', /^HT /)
+    // Not caught: the case has no entry for it, so the reply is the text entry.
+    expect((await $.command.run(run('dex 1'))).text).toMatch(/#001 BULBASAUR/)
+    isPlaced = false
+    expect((await $.command.run(run('box'))).text).toContain('1. GASTLY  Lv 1')
+    expect((await $.command.run(run('dex 92'))).text).toMatch(/#092 GASTLY/)
+  })
+
   test('the panel draws every tab on terminal and desktop, and its buttons act', async ($, on) => {
     const store = world(on, { save: { ...pika(), caught: [], box: [{ species: 92, isShiny: true, personality: 'brave', nickname: null, level: 1, exp: 0 }] } })
     on('ui.open', async () => ({ value: { isPlaced: true as const } }))
