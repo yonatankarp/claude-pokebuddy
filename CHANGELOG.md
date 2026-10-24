@@ -1,8 +1,12 @@
 # Changelog
 
-## 1.5.2 (2026-10-24)
+## 1.5.3 (2026-10-24)
 
 - The /buddy panel now fits a narrow window in the desktop app. In a docked pane the Buddy tab ran off the right edge, cutting off the level, the type badges, the EXP line and the skill bars. Now the facts move under the sprite when they don't fit beside it. The bag's stones wrap in their own column, and the next-stone list goes under its label. The list is laid out in columns, so its counts line up in the app's font. The Pokédex's second column of names moves under the first, and on the Help tab each description goes under its command. In the terminal the panel looks the same at normal widths, and in a narrow one the next-stone list now sits under its label too.
+
+## 1.5.2 (2026-10-17)
+
+- In the desktop app and VS Code your buddy's art now always shows above the prompt, with its bubble beside it. 1.5.1 lifted only one of the band's terminal limits, so a tall Pokémon such as Gyarados could still drop to the one-line view: the art also had to fit the band's rows and leave room for the bubble beside it, both measured in terminal cells. The app draws the art as an image, so none of these limits apply there now, as with piposh-buddy's band. The terminal is unchanged.
 
 ## 1.5.1 (2026-10-17)
 
