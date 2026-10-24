@@ -136,15 +136,17 @@ function buddyTab(els: PanelElements, { save, today }: PanelView, act: PanelActi
   const streak = feedStreak(save, today)
   const fedToday = save.feed.lastDate === today
   const held = STONES.filter(s => (save.bag[s] ?? 0) > 0)
+  const progress = stoneProgress(save, today)
   const hints = save.evolution ? [`Evolving into ${species(save.evolution.to).name}!`] : evolutionHints(sp)
   const label = (text: string) => <Box key="label" width={13} flexShrink={0}><Text color={ink?.faded} dimColor={!ink}>{text}</Text></Box>
   const skills = (key: string) => <Box key={key} marginTop={1}>{skillColumns(els, save, color, isApp, ink)}</Box>
   const tab = [
-    <Box key="top" flexDirection="row" alignItems={isCase ? 'flex-start' : undefined}>
+    // The app gives no width to stack by, so on the case the facts wrap under the sprite where they do not fit beside it.
+    <Box key="top" flexDirection="row" flexWrap={isCase ? 'wrap' : undefined} alignItems={isCase ? 'flex-start' : undefined}>
       {isCase
-        ? <Box key="art" flexShrink={0} backgroundColor={WHITE} borderStyle="round" borderColor={INK}>{buddyArt(els, save, true)}</Box>
+        ? <Box key="art" flexShrink={0} marginRight={2} marginBottom={1} backgroundColor={WHITE} borderStyle="round" borderColor={INK}>{buddyArt(els, save, true)}</Box>
         : <Box key="art" flexDirection="column" flexShrink={0}>{buddyArt(els, save, isApp)}</Box>}
-      <Box key="facts" flexDirection="column" marginLeft={2}>
+      <Box key="facts" flexDirection="column" marginLeft={isCase ? 0 : 2}>
         {isCase && <Text key="no" color={CASE}>{`No.${dexNo(sp.id)}`}</Text>}
         {/* Margins, not spaces, between the parts: a surface may trim them. */}
         <Box key="name" flexDirection="row" flexWrap="wrap">
@@ -154,9 +156,9 @@ function buddyTab(els: PanelElements, { save, today }: PanelView, act: PanelActi
           <Box key="p" marginLeft={2}><Text color={ink?.faded} dimColor={!ink}>{save.personality}</Text></Box>
         </Box>
         {isCase && <Box key="types" flexDirection="row">{typeBadges(els, sp.types)}</Box>}
-        <Box key="exp" flexDirection={isNarrow ? 'column' : 'row'}>
-          {expBarTexts(els, save, 10, color, isApp, ink)}
-          <Box key="next" marginLeft={isNarrow ? 0 : 2}><Text color={ink?.faded} dimColor={!ink}>{toNext}</Text></Box>
+        <Box key="exp" flexDirection={isNarrow ? 'column' : 'row'} flexWrap={isCase ? 'wrap' : undefined}>
+          <Box key="bar" flexDirection="row" marginRight={isNarrow ? 0 : 2}>{expBarTexts(els, save, 10, color, isApp, ink)}</Box>
+          <Text key="next" color={ink?.faded} dimColor={!ink}>{toNext}</Text>
         </Box>
         {(hints.length ? hints : ['Does not evolve.']).map(hint => (
           <Text key={hint} color={save.evolution ? color : ink?.faded} dimColor={!save.evolution && !ink}>{hint}</Text>
@@ -177,34 +179,40 @@ function buddyTab(els: PanelElements, { save, today }: PanelView, act: PanelActi
       <Box key="a-speech" marginRight={3}><Button key="quiet" hotkey="m" plain onPress={() => act.run('quiet')}>{save.speechOn ? 'Mute' : 'Unmute'}</Button></Box>
       {save.evolution && <Box key="a-stop" marginRight={3}><Button key="stop" hotkey="b" plain onPress={() => act.run('stop')}>Stop evolving</Button></Box>}
     </Box>,
-    <Box key="bag" flexDirection="row" flexWrap="wrap" marginTop={1}>
+    // The stones wrap in a column of their own, so a second line starts beside the label, not under it.
+    <Box key="bag" flexDirection="row" marginTop={1}>
       {label('Bag')}
-      {held.length === 0 && <Text key="empty" color={ink?.faded} dimColor={!ink}>No stones yet</Text>}
-      {held.map(s => (
-        <Box key={`s-${s}`} flexDirection="row" alignItems="center" marginRight={2}>
-          {stoneIcon(els, s, isApp)}
-          <Text key="t" color={ink?.text}>{`${stoneName(s)} ×${save.bag[s]}`}</Text>
-          {stoneEvolution(save.species, s) !== null &&
-            <Box key="b" marginLeft={1}><Button key={`use:${s}`} variant="primary" onPress={() => act.run(`use ${s}`)}>Use</Button></Box>}
-        </Box>
-      ))}
+      <Box key="held" flexDirection="row" flexWrap="wrap" flexShrink={1}>
+        {held.length === 0 && <Text key="empty" color={ink?.faded} dimColor={!ink}>No stones yet</Text>}
+        {held.map(s => (
+          <Box key={`s-${s}`} flexDirection="row" alignItems="center" marginRight={2}>
+            {stoneIcon(els, s, isApp)}
+            <Text key="t" color={ink?.text}>{`${stoneName(s)} ×${save.bag[s]}`}</Text>
+            {stoneEvolution(save.species, s) !== null &&
+              <Box key="b" marginLeft={1}><Button key={`use:${s}`} variant="primary" onPress={() => act.run(`use ${s}`)}>Use</Button></Box>}
+          </Box>
+        ))}
+      </Box>
     </Box>,
     <Box key="streak" flexDirection="row">
       {label('Feed streak')}
       <Text key="t" color={ink?.text}>{`${streak} day${streak === 1 ? '' : 's'}`}</Text>
     </Box>,
-    <Box key="stones" flexDirection="row">
+    // The list goes under its label where the two do not fit side by side: on the case by wrapping, in a narrow terminal always.
+    <Box key="stones" flexDirection={isNarrow ? 'column' : 'row'} flexWrap={isCase ? 'wrap' : undefined}>
       {label('Next stones')}
-      {/* A line each, the counts in a column, so the four read as a list. */}
-      <Box key="list" flexDirection="column">
-        {stoneProgress(save, today).map(p => (
-          <Box key={p.stone} flexDirection="row" alignItems="center">
-            {stoneIcon(els, p.stone, isApp)}
-            <Box key="n" width={8}><Text color={ink?.text}>{p.name.replace(' Stone', '')}</Text></Box>
-            <Box key="c" width={6}><Text color={ink?.text}>{`${p.done}/${p.of}`}</Text></Box>
-            <Text key="w" color={ink?.faded} dimColor={!ink}>{p.work}</Text>
-          </Box>
-        ))}
+      {/* A line each, in columns, not fixed widths: the app's font is proportional, so padding would not line the counts up. */}
+      <Box key="list" flexDirection="row">
+        <Box key="n" flexDirection="column">
+          {progress.map(p => (
+            <Box key={p.stone} flexDirection="row" alignItems="center">
+              {stoneIcon(els, p.stone, isApp)}
+              <Text key="t" color={ink?.text}>{p.name.replace(' Stone', '')}</Text>
+            </Box>
+          ))}
+        </Box>
+        <Box key="c" flexDirection="column" marginLeft={1}>{progress.map(p => <Text key={p.stone} color={ink?.text}>{`${p.done}/${p.of}`}</Text>)}</Box>
+        <Box key="w" flexDirection="column" marginLeft={2}>{progress.map(p => <Text key={p.stone} color={ink?.faded} dimColor={!ink}>{p.work}</Text>)}</Box>
       </Box>
     </Box>,
   ]
@@ -389,8 +397,9 @@ function dexCaseList(els: PanelElements, { save, dex }: PanelView, act: PanelAct
       </Box>
     )
   }
+  // Where the two columns do not fit side by side, the second goes under the first.
   const list = (
-    <Box key="list" flexDirection="row">
+    <Box key="list" flexDirection="row" flexWrap="wrap">
       {[0, 1].map(c => (
         <Box key={`c${c}`} flexDirection="column" marginRight={c === 0 ? 2 : 0}>{ids.slice(c * DEX_ROWS, (c + 1) * DEX_ROWS).map(row)}</Box>
       ))}
@@ -456,12 +465,12 @@ function helpTab({ Box, Text }: PanelElements, isApp: boolean, isNarrow: boolean
   const width = Math.max(...COMMAND_HELP.map(([args]) => args.length)) + COMMAND.length + 4
   return [
     <Text key="head" bold>Typed commands</Text>,
-    // Two columns where they fit; a narrow pane puts each about under its command.
+    // Two columns where they fit; a narrow pane puts each about under its command, the app's by wrapping.
     ...COMMAND_HELP.map(([args, about]) => !isNarrow
       ? (
-        <Box key={args} flexDirection="row">
-          <Box key="c" width={width}><Text>{`/${COMMAND} ${args}`}</Text></Box>
-          <Text key="t" dimColor>{about}</Text>
+        <Box key={args} flexDirection="row" flexWrap={isApp ? 'wrap' : undefined}>
+          <Box key="c" width={width - 2}><Text>{`/${COMMAND} ${args}`}</Text></Box>
+          <Box key="t" marginLeft={2}><Text dimColor>{about}</Text></Box>
         </Box>
       )
       : (

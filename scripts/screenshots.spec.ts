@@ -35,3 +35,17 @@ test('the desktop panel draws the Pokédex case with its lens and the box as car
   assert.match(box, />Make buddy</)
   assert.equal(box.match(/<svg x=/g)?.length, 2)
 })
+
+test('the desktop panel in a narrow docked pane keeps every tab inside it', () => {
+  const save = { ...sceneSave(3, 32), bag: { 'moon-stone': 10, 'fire-stone': 11, 'water-stone': 5 } as const, caught: [1, 3, 25] }
+  const view = { save, releasing: null, note: null, dex: { page: 0, entry: null }, today: '2026-10-24', columns: 42 }
+  for (const tab of ['buddy', 'box', 'dex', 'commands'] as const) {
+    const svg = renderDesktopPanel({ ...view, tab }, 340)
+    // The pane's right edge: the SVG's width less the 16px it pads the panel by.
+    const edge = Number(/width="([\d.]+)"/.exec(svg)![1]) - 16
+    // Each <text> ends where its characters do: the font is monospace, 13px at 0.6 of its size each.
+    for (const [, x, text] of svg.matchAll(/<text x="([\d.]+)"[^>]*>([^<]*)<\/text>/g)) {
+      assert.ok(Number(x) + text!.length * 13 * 0.6 <= edge, `${tab}: "${text}" runs past the pane`)
+    }
+  }
+})

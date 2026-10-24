@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.2 (2026-10-24)
+
+- The /buddy panel now fits a narrow window in the desktop app. In a docked pane the Buddy tab ran off the right edge, cutting off the level, the type badges, the EXP line and the skill bars. Now the facts move under the sprite when they don't fit beside it. The bag's stones wrap in their own column, and the next-stone list goes under its label. The list is laid out in columns, so its counts line up in the app's font. The Pokédex's second column of names moves under the first, and on the Help tab each description goes under its command. In the terminal the panel looks the same at normal widths, and in a narrow one the next-stone list now sits under its label too.
+
 ## 1.5.1 (2026-10-17)
 
 - In the desktop app and VS Code your buddy's art no longer drops to the one-line view in a shorter window. The band gave way to the line when its full view was taller than half the window, measured in terminal rows, so a taller Pokémon such as Gyarados lost its art where Magikarp had fit. The app draws the art as an image, so that limit now applies only in the terminal.
