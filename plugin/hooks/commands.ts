@@ -105,7 +105,7 @@ export function dexText(s: Species, owned: boolean): string {
 /** Every sub-command and what it does: the help text and the panel's Help tab. */
 export const COMMAND_HELP: readonly [args: string, about: string][] = [
   ['stats', 'Your Pokémon and progress as text'],
-  ['dex [name or number]', 'A Pokédex entry'],
+  ['dex [name or number]', 'The Pokédex, or one Pokémon\'s entry'],
   ['feed', 'A Rare Candy, once a day'],
   ['use <stone>', 'Evolve with a stone from your bag'],
   ['stop', 'Cancel an evolution in progress'],

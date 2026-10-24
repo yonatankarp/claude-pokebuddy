@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PromptOrigin, Register, ToolCallResult } from 'claude-code'
 import { parseArgs, runCommand, statsText, type CommandIO } from './commands'
 import { COMMAND, EVOLVE_MS, FLASH_MS, PENDING_LOG_MAX } from './config'
-import { species } from './data/dex'
+import { findSpecies, species } from './data/dex'
 import { stoneName } from './data/types'
 import { catchWild, ENCOUNTER_CHANCE, encountersRolled, JUDGE_ENCOUNTER } from './collection'
 import { applyExp, applyTurn, finishEvolution, type GameEvent } from './game'
@@ -10,7 +10,7 @@ import { judge } from './judge'
 import { FINISHED_MAX, lineSession, tagLine, takeEnded } from './log'
 import { localTime } from './localtime'
 import { band, type BandView } from './render/band'
-import { panel, PANEL, PANEL_COLUMNS, PANEL_ROWS, type PanelTab } from './render/panel'
+import { dexPageOf, panel, PANEL, PANEL_COLUMNS, PANEL_ROWS, type PanelTab } from './render/panel'
 import { signalsFromTool, type Outcome } from './signals'
 import { EXCERPT_MAX, speak, turnFacts } from './speech'
 import { freshSave, parseSave, type Save } from './state'
@@ -291,22 +291,30 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'buddy' }, async ($, e) => {
     const io = commandIO($, isInteractive)
-    // Bare /buddy opens the panel, a mistyped one on its Help tab saying so; where no surface can show it
-    // (a headless run), the stats or the help as text.
-    const isHelp = parseArgs(e.args).sub === 'help'
-    if (e.args.trim() && !isHelp) return { text: await runCommand(io, e.args) }
+    // Bare /buddy opens the panel, a mistyped one on its Help tab saying so, and a bare box or dex on that tab,
+    // dex with a caught Pokémon on its entry: the app may drop presses on the tabs, so typing reaches each.
+    // Where no surface can show it (a headless run), the same as text.
+    const { sub, rest } = parseArgs(e.args)
+    const isHelp = sub === 'help'
+    const entry = sub === 'dex' && rest ? findSpecies(rest)?.id ?? null : null
+    const tab: PanelTab | null = isHelp ? 'commands' : !e.args.trim() ? 'buddy'
+      : sub === 'box' && !rest ? 'box' : sub === 'dex' && (!rest || entry !== null) ? 'dex' : null
+    if (tab === null) return { text: await runCommand(io, e.args) }
     const save = await io.load()
     if (!save) return { text: io.blockedText() }
+    // The case opens only the Pokémon it has data on: one not caught is answered as text.
+    if (entry !== null && !save.caught.includes(entry)) return { text: await runCommand(io, e.args) }
     await io.show(save)
     const typo = isHelp && e.args.trim().toLowerCase() !== 'help' ? `/${COMMAND} ${e.args.trim()} is not a command.` : null
     await update($, noteAtom, () => typo)
     await update($, releasingAtom, () => null)
-    await update($, dexAtom, () => ({ page: 0, entry: null }))
-    await update($, tabAtom, () => isHelp ? 'commands' : 'buddy')
+    await update($, dexAtom, () => (entry === null ? { page: 0, entry: null } : { page: dexPageOf(entry), entry, cursor: entry }))
+    await update($, tabAtom, () => tab)
     const opened = await $.ui.open({ id: PANEL, title: 'pokebuddy', focus: true, closeOnEscape: true, holdToasts: true, rows: PANEL_ROWS, columns: PANEL_COLUMNS })
       .catch(() => ({ isPlaced: false as const }))
     if (opened.isPlaced) return {}
-    return { text: isHelp ? [typo, await runCommand(io, e.args)].filter(Boolean).join('\n') : statsText(save, localTime(await io.now()).date) }
+    if (tab === 'buddy') return { text: statsText(save, localTime(await io.now()).date) }
+    return { text: [typo, await runCommand(io, e.args)].filter(Boolean).join('\n') }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANEL }, async ($, e) => {

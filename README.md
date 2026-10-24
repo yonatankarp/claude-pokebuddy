@@ -46,10 +46,10 @@ In some places Claude Code shows the command as `/pokebuddy:buddy`.
 | --- | --- |
 | `/buddy` | Open the panel (as text in `-p` runs) |
 | `/buddy stats` | Your Pokémon, EXP, progress and skills as text |
-| `/buddy box` | Your buddy and the Pokémon in your box |
+| `/buddy box` | Open the panel on the Box tab: your buddy and the Pokémon in your box |
 | `/buddy switch <number or name>` | Make a Pokémon from the box your buddy |
 | `/buddy release <number> confirm` | Let a Pokémon from the box go |
-| `/buddy dex [name or number]` | A Pokédex entry, yours by default |
+| `/buddy dex [name or number]` | Open the panel on the Pokédex, or on a caught Pokémon's entry; one you haven't caught as text |
 | `/buddy feed` | A Rare Candy, once a day (not in `-p` or SDK runs) |
 | `/buddy use <stone>` | Evolve with a stone from your bag |
 | `/buddy stop` | Cancel an evolution in progress |
@@ -140,7 +140,7 @@ The plugin only watches: every hook passes its event on unchanged, and none bloc
 | `prompt.submit` | Counts the prompt for EXP (not slash commands) and redraws a save another session wrote |
 | `tool.call` | Reads the finished call (the tool, its command or file path, whether it failed, and its output) to spot commits, pushes, PRs, config edits and checks; only short check names and config file names reach the save |
 | `turn.complete` | Adds up the turn's EXP, logs a one-line summary and asks the speech model for a reaction |
-| `command.run` | Answers `/buddy`, and opens the panel for a bare `/buddy` |
+| `command.run` | Answers `/buddy`, and opens the panel for a bare `/buddy`, `box` or `dex` |
 | `ui.render` | Draws the band above the prompt and the `/buddy` panel; the panel's buttons run `/buddy` commands |
 
 </details>

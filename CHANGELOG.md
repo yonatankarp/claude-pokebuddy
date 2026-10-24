@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.4 (2026-10-24)
+
+- `/buddy box` and `/buddy dex` now open the panel on the Box and Pokédex tabs, and `/buddy dex pikachu` opens that entry when you've caught it. The desktop app currently ignores clicks on the panel's buttons, so the tabs can't be switched there; typing reaches each one meanwhile. A Pokémon you haven't caught, and a session with nowhere to draw the panel, still get the text reply.
+
 ## 1.5.3 (2026-10-24)
 
 - The /buddy panel now fits a narrow window in the desktop app. In a docked pane the Buddy tab ran off the right edge, cutting off the level, the type badges, the EXP line and the skill bars. Now the facts move under the sprite when they don't fit beside it. The bag's stones wrap in their own column, and the next-stone list goes under its label. The list is laid out in columns, so its counts line up in the app's font. The Pokédex's second column of names moves under the first, and on the Help tab each description goes under its command. In the terminal the panel looks the same at normal widths, and in a narrow one the next-stone list now sits under its label too.

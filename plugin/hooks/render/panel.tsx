@@ -27,6 +27,8 @@ const TABS: [PanelTab, string][] = [['buddy', 'Buddy'], ['box', 'Box'], ['dex', 
 const DEX_ROWS = 13
 const DEX_PAGE = DEX_ROWS * 2
 const DEX_PAGES = Math.ceil(POKEDEX.length / DEX_PAGE)
+/** The Pokédex list page a species is on. */
+export const dexPageOf = (id: number) => Math.floor((id - 1) / DEX_PAGE)
 const DEX_RED = '#e3350d'
 const dexNo = (id: number) => String(id).padStart(3, '0')
 // The app's Pokédex and PC box: solid colours of their own, so every Text on them names its colour or a dark theme hides it.
@@ -376,8 +378,7 @@ function dexCaseList(els: PanelElements, { save, dex }: PanelView, act: PanelAct
   const ids = POKEDEX.slice(page * DEX_PAGE, (page + 1) * DEX_PAGE).map(s => s.id)
   // The cursor stays on its Pokémon while that is on the page shown; else it starts on the page's first caught one.
   const cursor = dex.cursor !== undefined && caught.has(dex.cursor) && ids.includes(dex.cursor) ? dex.cursor : ids.find(id => caught.has(id))
-  const pageOf = (id: number) => Math.floor((id - 1) / DEX_PAGE)
-  const to = (id: number | undefined) => { if (id !== undefined) act.dex({ page: pageOf(id), entry: null, cursor: id }) }
+  const to = (id: number | undefined) => { if (id !== undefined) act.dex({ page: dexPageOf(id), entry: null, cursor: id }) }
   const at = cursor === undefined ? -1 : owned.indexOf(cursor)
   const up = cursor === undefined ? owned.filter(id => id < ids[0]!).pop() : owned[at - 1]
   const down = cursor === undefined ? owned.find(id => id > ids[ids.length - 1]!) : owned[at + 1]
@@ -429,7 +430,7 @@ function dexEntry(els: PanelElements, { save, dex }: PanelView, act: PanelAction
   // Prev and Next step through the caught ones, as the original only opens Pokémon it has data on.
   const owned = [...new Set(save.caught)].sort((a, b) => a - b)
   const at = owned.indexOf(sp.id)
-  const open = (id: number | undefined) => { if (id !== undefined) act.dex({ page: Math.floor((id - 1) / DEX_PAGE), entry: id, cursor: id }) }
+  const open = (id: number | undefined) => { if (id !== undefined) act.dex({ page: dexPageOf(id), entry: id, cursor: id }) }
   const ink = isCase ? INK : undefined
   const screen = [
     <Box key="top" flexDirection="row">
